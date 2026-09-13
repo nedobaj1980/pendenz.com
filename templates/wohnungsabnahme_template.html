@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Wohnungsabnahmeprotokoll</title>
+    <style>
+        @page { 
+            margin: 1.2cm; 
+            @bottom-right {
+                content: "Seite " counter(page) " von " counter(pages);
+                font-size: 7pt;
+                color: #718096;
+            }
+        }
+        body { 
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+            line-height: 1.35; 
+            color: #1a202c; 
+            margin: 0; 
+            padding: 0; 
+            font-size: 8pt; 
+        }
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            border-bottom: 3px solid #007a3d;
+        }
+        .header-title {
+            font-size: 16pt;
+            font-weight: 800;
+            color: #007a3d;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+            padding-bottom: 5px;
+        }
+        .header-meta {
+            text-align: right;
+            font-size: 7.5pt;
+            color: #718096;
+            padding-bottom: 5px;
+            line-height: 1.2;
+        }
+        
+        .section-header { 
+            background-color: #007a3d; 
+            color: white; 
+            padding: 4px 8px; 
+            font-weight: bold; 
+            margin: 12px 0 6px 0; 
+            font-size: 9.5pt; 
+            text-transform: uppercase; 
+            border-radius: 2px;
+        }
+        
+        table.meta-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 12px; 
+        }
+        table.meta-table td { 
+            padding: 6px 8px; 
+            vertical-align: top; 
+            border: 1px solid #cbd5e0; 
+            background-color: #f7fafc;
+        }
+        
+        .label { 
+            font-weight: bold; 
+            color: #4a5568; 
+            font-size: 7.5pt; 
+            text-transform: uppercase; 
+            display: block; 
+            margin-bottom: 3px; 
+        }
+        .value { 
+            font-weight: bold; 
+            font-size: 9pt; 
+            color: #2d3748;
+        }
+        
+        /* Grid table for Checklist */
+        table.checklist-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        table.checklist-table th {
+            background-color: #edf2f7;
+            color: #2d3748;
+            font-weight: bold;
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            padding: 5px;
+            border: 1px solid #cbd5e0;
+            text-align: left;
+        }
+        table.checklist-table td {
+            padding: 4px 6px;
+            border: 1px solid #e2e8f0;
+            font-size: 7.5pt;
+            vertical-align: middle;
+        }
+        .room-title-row {
+            background-color: #f7fafc;
+            font-weight: bold;
+            color: #007a3d;
+            font-size: 8pt;
+        }
+        .item-checked {
+            color: #e53e3e;
+            font-weight: bold;
+        }
+        .item-ok {
+            color: #718096;
+        }
+        
+        /* Mängelliste Table */
+        table.defect-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        table.defect-table th {
+            background-color: #edf2f7;
+            color: #2d3748;
+            font-weight: bold;
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            padding: 5px;
+            border: 1px solid #cbd5e0;
+        }
+        table.defect-table td {
+            padding: 6px;
+            border: 1px solid #cbd5e0;
+            vertical-align: top;
+        }
+        
+        /* Signatures */
+        table.sig-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        table.sig-table td {
+            border: 1px solid #cbd5e0;
+            padding: 8px;
+            background-color: #fff;
+            height: 80px;
+            vertical-align: bottom;
+        }
+        .sig-label {
+            border-top: 1px solid #a0aec0;
+            margin-top: 8px;
+            padding-top: 4px;
+            text-align: center;
+            font-size: 7.5pt;
+            font-weight: bold;
+            color: #4a5568;
+        }
+        .sig-img {
+            max-height: 60px;
+            max-width: 200px;
+            display: block;
+            margin: 0 auto 5px auto;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 1px 4px;
+            font-size: 6.5pt;
+            font-weight: bold;
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+        .badge-mieter {
+            background-color: #feebc8;
+            color: #c05621;
+        }
+        .badge-vermieter {
+            background-color: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .photo-thumbnail {
+            width: 100px;
+            height: 75px;
+            margin-top: 5px;
+            border-radius: 3px;
+            border: 1px solid #cbd5e0;
+        }
+
+        .page-break { 
+            page-break-before: always; 
+        }
+        
+        .room-block {
+            page-break-inside: avoid;
+            margin-bottom: 12px;
+        }
+        
+        /* Compact 4-column checklist styles */
+        table.compact-room-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 6px;
+            font-size: 6.8pt;
+            line-height: 1.1;
+        }
+        table.compact-room-table th.room-title-cell {
+            background-color: #007a3d;
+            color: white;
+            font-weight: bold;
+            font-size: 7.2pt;
+            text-align: left;
+            padding: 3px 5px;
+            text-transform: uppercase;
+        }
+        table.compact-room-table th.room-title-cell td {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            color: white !important;
+        }
+        table.compact-room-table th.room-title-cell table {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        table.compact-room-table td {
+            border: 1px solid #cbd5e0;
+            padding: 2px 4px;
+            vertical-align: middle;
+            background-color: #ffffff;
+            font-size: 6.5pt;
+        }
+        table.compact-room-table td.cell-defect {
+            background-color: #fff5f5;
+            color: #c53030;
+            font-weight: bold;
+        }
+        table.compact-room-table td.cell-ok {
+            background-color: #ffffff;
+            color: #2d3748;
+        }
+        .item-num {
+            font-weight: bold;
+            color: #718096;
+            margin-right: 2px;
+            display: inline-block;
+            min-width: 12px;
+            text-align: right;
+        }
+        .cell-defect .item-num {
+            color: #c53030;
+        }
+        .checkbox-defect {
+            color: #c53030;
+            font-weight: bold;
+            font-size: 8pt;
+            line-height: 1;
+        }
+        .checkbox-ok {
+            color: #718096;
+            font-size: 8pt;
+            line-height: 1;
+        }
+        .room-paint-text {
+            font-size: 6.2pt;
+            font-weight: normal;
+            color: #e2e8f0;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <table class="header-table">
+        <tr>
+            <td class="header-title" style="border:none;">Wohnungsabnahmeprotokoll</td>
+            <td class="header-meta" style="border:none;">
+                <strong>Referenz:</strong> [[REFERENZ_NR]]<br>
+                <strong>Datum:</strong> [[DATUM]]
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header">1. Objekt &amp; Vertragspartner</div>
+    <table class="meta-table">
+        <tr>
+            <td width="50%">
+                <span class="label">Mietobjekt / Stockwerk</span>
+                <div class="value">[[PROJEKT_NAME]] / [[WOHNUNG_NAME]]</div>
+                <div style="margin-top: 8px;">
+                    <span class="label">Stockwerk / Etage</span>
+                    <div class="value">[[ETAGE]]</div>
+                </div>
+                <div style="margin-top: 8px;">
+                    <span class="label">Zustand Letzte Abnahme</span>
+                    <div class="value">[[LETZTE_ABNAHME]]</div>
+                </div>
+            </td>
+            <td width="50%">
+                <span class="label">Ein- / Ausziehende(r) MieterIn</span>
+                <div class="value">[[MIETER_NAME]]</div>
+                <div style="margin-top: 8px;">
+                    <span class="label">Vertreten durch</span>
+                    <div class="value">[[MIETER_VERTRETER]]</div>
+                </div>
+                <div style="margin-top: 8px;">
+                    <span class="label">VermieterIn / Verwaltung</span>
+                    <div class="value">[[VERMIETER_FIRMA]] (Vertr. durch: [[VERWALTER_NAME]])</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header">2. Zählerstände &amp; Schlüssel</div>
+    <table class="meta-table">
+        <tr>
+            <td width="50%">
+                <span class="label">Zählerstände</span>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+                    <tr>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Strom I: <strong>[[STROM_1]] kWh</strong></td>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Strom II: <strong>[[STROM_2]] kWh</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Wasser: <strong>[[WASSER]] m³</strong></td>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Warmwasser: <strong>[[WARMWASSER]] m³</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Gas: <strong>[[GAS]]</strong></td>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Heizöl: <strong>[[HEIZOEL]]</strong></td>
+                    </tr>
+                </table>
+            </td>
+            <td width="50%">
+                <span class="label">Schlüsselübergabe (Anzahl)</span>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+                    <tr>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Haustüre: <strong>[[SCHLUESSEL_HAUSTUER]]</strong></td>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Wohnungstüre: <strong>[[SCHLUESSEL_WOHNUNGSTUER]]</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Briefkasten: <strong>[[SCHLUESSEL_BRIEFKASTEN]]</strong></td>
+                        <td style="padding: 2px; border: none; font-size: 7.5pt;">Keller/Estrich: <strong>[[SCHLUESSEL_KELLER]]</strong></td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header" style="margin-top: 5px; margin-bottom: 5px;">3. Abnahme-Checkliste</div>
+    [[COMPACT_CHECKLIST]]
+
+    <div class="section-header">4. Weitere Vereinbarungen &amp; Bemerkungen</div>
+    <table class="meta-table">
+        <tr>
+            <td>
+                <div style="min-height: 50px; font-size: 8pt;">[[WEITERE_BEMERKUNGEN]]</div>
+                <div style="margin-top: 8px; border-top: 1px dashed #cbd5e0; padding-top: 4px; font-size: 7.5pt; color: #4a5568;">
+                    Die Heiz- und Nebenkostenabrechnung wird erstellt bis: <strong>[[NEBENKOSTEN_BIS]]</strong>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header">5. Bestätigung &amp; Unterschriften</div>
+    <p style="font-size: 7pt; color: #4a5568; margin-bottom: 10px; line-height: 1.25;">
+        Die Unterzeichnenden bestätigen mit ihrer Unterschrift die Richtigkeit der oben gemachten Angaben. 
+        Die Schlüssel wurden wie oben aufgeführt übergeben. Nachträglich entdeckte Mängel müssen innerhalb von 10 Tagen schriftlich gemeldet werden.
+    </p>
+
+    <table class="sig-table">
+        <tr>
+            <td width="31%">
+                <div style="text-align: center;">[[SIGNATURE_VERMIETER]]</div>
+                <div class="sig-label">VermieterIn / Verwaltung<br><span style="font-weight:normal; font-size:6.5pt;">Vertreten durch: [[VERWALTER_NAME]]</span></div>
+            </td>
+            <td width="3%" style="border:none; background:none;"></td>
+            <td width="32%">
+                <div style="text-align: center;">[[SIGNATURE_MIETER]]</div>
+                <div class="sig-label">MieterIn (aus- / einziehend)</div>
+            </td>
+            <td width="3%" style="border:none; background:none;"></td>
+            <td width="31%">
+                <div style="text-align: center;">[[SIGNATURE_EXPERTE]]</div>
+                <div class="sig-label">ExpertIn (falls anwesend)</div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 15px; text-align: center; font-size: 6.5pt; color: #a0aec0;">
+        Dieses Protokoll wurde digital erstellt und archiviert. &copy; [[VERMIETER_FIRMA]] | Erstellt mit pendenz.com
+    </div>
+
+    <!-- START OF LEBENSTABELLE (LAST PAGE) -->
+    <div style="page-break-before: always;"></div>
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a202c; font-size: 7.5pt; line-height: 1.3;">
+        <h2 style="font-size: 13pt; color: #007a3d; margin: 0 0 5px 0; text-transform: uppercase; font-weight: 800; border-bottom: 2px solid #007a3d; padding-bottom: 3px;">Wohnungsabnahmeprotokoll – Lebensdauertabelle</h2>
+        <div style="font-size: 6.8pt; line-height: 1.3; color: #4a5568; margin-bottom: 12px; background-color: #f7fafc; padding: 6px; border-left: 3px solid #007a3d; border-radius: 1px;">
+            <strong>Normale Lebensdauer verschiedener Einrichtungen (Auszug aus der paritätischen Lebensdauertabelle Mieterverband / Hauseigentümerverband HEV)</strong><br>
+            Der erste Teil des Protokolls dient der Aufnahme von Schäden. Die untenstehende Tabelle hält fest, wie lange die «normale Lebensdauer» eines Einrichtungsgegenstandes ist. Nach Ablauf dieser Lebensdauer haftet die Mieterschaft nicht mehr für den Ersatz oder die Instandstellung des Gegenstandes. Ist die Lebensdauer nur teilweise abgelaufen, wird nur für den noch nicht abgeschriebenen Teil gehaftet.
+        </div>
+        
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 5px;">
+            <tr>
+                <!-- Column 1: Gebäudehülle -->
+                <td valign="top" style="width: 24%; padding-right: 8px; border: none; background: none;">
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Gebäudehülle</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">DV-Fenster, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">IV-Fenster, Holz/Metall</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kunststoff, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Metallfenster</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Rollläden, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Metall, Aluminium</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Lamellenstoren, Alu</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Sonnenstoren, Stoff</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Gurten (Sonnenstoren)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">8 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Motoren (Rollläden)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kurbeln</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Jalousieläden, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Jalousieläden, Alu</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">40 J.</td></tr>
+                    </table>
+                    
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-top: 12px; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Bodenbeläge</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">PV-Belag, Novilon</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Linol, Vinyl, PVC</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Korkboden versiegelt</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Laminat (günstig)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Laminat (mittlere Q.)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Laminat (gehobene Q.)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Massivparkett / Klötzli</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">40 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Mehrschichtparkett</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Teppichbeläge</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Stein- / Tonplatten</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Naturstein, hart</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">40 J.</td></tr>
+                    </table>
+                </td>
+                
+                <!-- Column 2: Decken/Wände/Türen -->
+                <td valign="top" style="width: 25%; padding-right: 8px; border: none; background: none;">
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Decken/Wände/Türen</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Tapeten, Raufaser</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Tapeten zum Überstr.</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">24 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Wandanstrich, Dispers.</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">8 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Acryl- / Alkydfarben</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kunststoffabrieb</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Mineralischer Abrieb</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Weissputze</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Türen, Metall/Massivholz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Türen, Pressspan/Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Schiebetüren, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Beschläge / Schlösser</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kittfugen</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Schliesszylinder/Schl.</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Türrahmen, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Türrahmen, Metall</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">40 J.</td></tr>
+                    </table>
+                    
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-top: 12px; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Elektroanlagen</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">TV-/Netzwerkanschluss</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Schalter / Steckdosen</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Zähler</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Leuchten (Küche, Bad)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                    </table>
+                </td>
+                
+                <!-- Column 3: Küche -->
+                <td valign="top" style="width: 25%; padding-right: 8px; border: none; background: none;">
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Küche</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kühlschrank</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Tiefkühlschrank</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kochherd / Backofen</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Glaskeramikkochfeld</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Induktionskochfeld</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Geschirrspüler</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Dampfabzug</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Mikrowelle</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Steamer</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Küchenmöbel, besch.</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Küchenmöbel, Holz</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Chromstahl-Abdeckung</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Granit- / Glasabdeckung</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Corian-Abdeckung</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Kunstharzabdeckung</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Bedienungsarmaturen</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Fugen / Dichtungen</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">10 J.</td></tr>
+                    </table>
+                </td>
+                
+                <!-- Column 4: Bad/WC & Nutzung -->
+                <td valign="top" style="width: 26%; border: none; background: none;">
+                    <div style="background-color: #007a3d; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Bad / Dusche / WC</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 5.5pt;">
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Badewanne, Acryl</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">25 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Wanne, Stahl emailliert</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">35 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Lavabo / WC / Bidet</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">35 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Dusch-WC (Closomat)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Spülkasten, Kunststoff</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Spülkasten, Keramik</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">30 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Spiegelschränke</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Mischbatterien, verchr.</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">20 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Fugendichtungen (Bad)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">8 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Haltestangen, verchromt</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Waschmaschine</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                        <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 1.5px 0;">Wäschetrockner (Tumbler)</td><td align="right" style="font-weight: bold; color: #007a3d; white-space: nowrap; padding-left: 3px;">15 J.</td></tr>
+                    </table>
+                    
+                    <div style="background-color: #2b6cb0; color: white; padding: 2px 4px; font-weight: bold; font-size: 7pt; margin-top: 12px; margin-bottom: 4px; border-radius: 1px; text-transform: uppercase; letter-spacing: 0.2px;">Besondere Nutzung</div>
+                    <div style="font-size: 5.5pt; line-height: 1.25; color: #2d3748; background-color: #f7fafc; padding: 4px; border: 1px solid #cbd5e0; border-radius: 1px;">
+                        <strong>Reduktion der Lebensdauer bei starker Abnutzung:</strong>
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 2px;">
+                            <tr style="border-bottom: 1px dotted #cbd5e0;"><td style="padding: 1px 0;">Büros (Beläge)</td><td align="right" style="font-weight:bold; color:#2b6cb0; padding-left: 2px;">-20%</td></tr>
+                            <tr style="border-bottom: 1px dotted #cbd5e0;"><td style="padding: 1px 0;">Gewerbe (Läden)</td><td align="right" style="font-weight:bold; color:#2b6cb0; padding-left: 2px;">-25%</td></tr>
+                            <tr style="border-bottom: 1px dotted #cbd5e0;"><td style="padding: 1px 0;">Gastronomie (Rest.)</td><td align="right" style="font-weight:bold; color:#2b6cb0; padding-left: 2px;">-50%</td></tr>
+                        </table>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        
+        <div style="margin-top: 12px; padding: 5px; border: 1px solid #cbd5e0; background-color: #f7fafc; font-size: 5.5pt; color: #4a5568; line-height: 1.3; border-radius: 1px;">
+            <strong>Hinweis zur Anwendung &amp; Rechtliches:</strong> Diese paritätische Lebensdauertabelle wird gemeinsam vom <strong>Schweizerischen Mieterinnen- und Mieterverband (MV)</strong> sowie vom <strong>Hauseigentümerverband (HEV Schweiz)</strong> getragen und vom SVIT unterstützt. Sie dient im Schadenfall zur präzisen Berechnung der wertmäßigen Haftung der Mieterschaft (Zeitwertberechnung). Ein Mieter haftet nur für den Zeitwert eines Gegenstandes, nicht für den Neuwert.
+        </div>
+    </div>
+
+</body>
+</html>

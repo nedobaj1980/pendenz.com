@@ -1,0 +1,22 @@
+Options -Indexes -Multiviews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+</IfModule>
+
+# In /api GET/POST/HEAD/OPTIONS erlauben
+<LimitExcept GET POST HEAD OPTIONS>
+  Require all denied
+</LimitExcept>
+
+# PHP ausführen erlauben
+<FilesMatch "\.php$">
+  Require all granted
+</FilesMatch>
+
+# Sensible Dateien schützen
+<FilesMatch "\.(?:ini|log|bak|sql|ya?ml|md)$">
+  Require all denied
+</FilesMatch>
+
+AddType application/json .json

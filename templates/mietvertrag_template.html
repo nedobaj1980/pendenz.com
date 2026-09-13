@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Mietvertrag für Wohnräume</title>
+    <style>
+        @page { margin: 2cm; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.4; color: #1a1a1a; margin: 0; padding: 0; font-size: 10pt; }
+        .mp-green { color: #007a3d; }
+        .mp-bg-green { background-color: #007a3d; color: white; }
+        
+        .header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .title { font-size: 18pt; font-weight: bold; color: #007a3d; margin-bottom: 5px; }
+        .subtitle { font-size: 11pt; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #007a3d; padding-bottom: 5px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th { text-align: left; background-color: #f2f2f2; padding: 5px 8px; font-size: 9pt; border-bottom: 1px solid #ccc; }
+        td { padding: 8px; vertical-align: top; border-bottom: 1px solid #eee; }
+        
+        .section-header { background-color: #007a3d; color: white; padding: 4px 10px; font-weight: bold; margin: 20px 0 10px 0; font-size: 10pt; }
+        
+        .label { font-weight: bold; width: 180px; display: inline-block; }
+        .checkbox-row { margin-bottom: 5px; }
+        .checkbox { display: inline-block; width: 12px; height: 12px; border: 1px solid #000; margin-right: 5px; vertical-align: middle; }
+        .checked { background-color: #000; position: relative; }
+        .checked::after { content: 'X'; position: absolute; top: -2px; left: 1px; font-size: 9px; color: white; }
+        
+        .footer { margin-top: 50px; font-size: 9pt; }
+        .sig-table td { border: none; padding-top: 50px; width: 50%; }
+        .sig-line { border-top: 1px solid #000; padding-top: 5px; text-align: center; }
+        
+        .small-text { font-size: 8pt; color: #666; }
+        .highlight { background-color: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <div class="title">Mietvertrag für Wohnräume</div>
+            <div class="subtitle">Ausgabe 2019 - mp interaktiv</div>
+        </div>
+    </div>
+
+    <div class="section-header">1. Vertragsparteien</div>
+    <table>
+        <tr>
+            <td width="50%">
+                <div class="label">Vermieter</div><br>
+                <strong>Baupartnerschaft AG</strong><br>
+                [[VERMIETER_ADRESSE]]
+            </td>
+            <td width="50%">
+                <div class="label">Mieter</div><br>
+                <strong>[[MIETER_NAME]]</strong><br>
+                [[MIETER_ADRESSE]]
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header">2. Mietsache</div>
+    <div class="highlight">
+        <p>Vermietet wird die folgende Einheit im Objekt <strong>[[PROJEKT_NAME]]</strong>:</p>
+        <table style="border: none;">
+            <tr style="border: none;">
+                <td style="border: none; padding: 2px;"><span class="label">Strasse/Nr.:</span> [[OBJEKT_ADRESSE]]</td>
+                <td style="border: none; padding: 2px;"><span class="label">Wohnung:</span> [[WOHNUNG_NAME]]</td>
+            </tr>
+            <tr style="border: none;">
+                <td style="border: none; padding: 2px;"><span class="label">Etage:</span> [[ETAGE]]</td>
+                <td style="border: none; padding: 2px;"><span class="label">Zimmer:</span> [[ZIMMER]]</td>
+            </tr>
+        </table>
+        
+        <div style="margin-top: 10px;">
+            <div class="checkbox-row"><span class="checkbox checked"></span> Wohnräume zur ausschliesslichen Benützung</div>
+            <div class="checkbox-row"><span class="checkbox"></span> Kellerabteil / Estrichabteil</div>
+            <div class="checkbox-row"><span class="checkbox"></span> Einstellplatz / Parkplatz</div>
+        </div>
+    </div>
+
+    <div class="section-header">3. Mietzeit & Kündigung</div>
+    <p>Das Mietverhältnis beginnt am <strong>[[BEGINN]]</strong>.</p>
+    <p class="small-text">Die Kündigungsfrist beträgt 3 Monate auf das Ende jedes Quartals (ausser 31. Dezember).</p>
+
+    <div class="section-header">4. Mietzins & Nebenkosten</div>
+    <table>
+        <tr>
+            <td>Nettomietzins pro Monat</td>
+            <td style="text-align: right;">CHF [[NETTO]]</td>
+        </tr>
+        <tr>
+            <td>Nebenkosten (Heizung, Warmwasser, Betriebskosten) Akonto</td>
+            <td style="text-align: right;">CHF [[NK]]</td>
+        </tr>
+        <tr style="background-color: #f2f2f2; font-weight: bold;">
+            <td>Total monatliche Zahlung</td>
+            <td style="text-align: right;">CHF [[BRUTTO]]</td>
+        </tr>
+    </table>
+
+    <div class="section-header">5. Sicherheitsleistung (Kaution)</div>
+    <p>Der Mieter leistet eine Sicherheit in der Höhe von 3 Monatsmieten (Netto) auf ein Mietzinskautionskonto.</p>
+
+    <div class="section-header">Besondere Vereinbarungen</div>
+    <div style="min-height: 80px; border: 1px solid #eee; padding: 10px;">
+        Das Rauchen in den Wohnräumen ist untersagt. Haustierhaltung nach Absprache.
+    </div>
+
+    <div class="footer">
+        <p>Ort, Datum: [[ORT]], den [[HEUTE]]</p>
+        <table class="sig-table">
+            <tr>
+                <td>
+                    <div class="sig-line">Der Vermieter</div>
+                </td>
+                <td>
+                    <div class="sig-line">Der Mieter</div>
+                </td>
+            </tr>
+        </table>
+        <p class="small-text" style="margin-top: 30px;">Dieser Vertrag wurde elektronisch erstellt und ist ohne Beiblätter gültig.</p>
+    </div>
+
+</body>
+</html>

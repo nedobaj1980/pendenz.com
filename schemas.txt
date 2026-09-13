@@ -1,0 +1,86 @@
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+name	varchar(255)	NO		NULL	
+adresse	varchar(255)	YES		NULL	
+anrede	varchar(20)	YES		NULL	
+telefonnummer	varchar(50)	YES		NULL	
+email	varchar(255)	YES	UNI	NULL	
+passwort_hash	varchar(255)	YES		NULL	
+eingeladen_am	datetime	YES		NULL	
+aktiviert_am	datetime	YES		NULL	
+passwort	varchar(255)	NO		NULL	
+geburtsdatum	date	YES		NULL	
+rolle	enum('superadmin','admin','benutzer','gast')	YES		benutzer	
+business_type	enum('standard','mieter','vermieter','mietinteressent','vormieter','handwerker','kunde','lieferant')	NO		standard	
+mieter_phase	enum('interessent','mieter','vormieter','gekÅndigt')	YES		NULL	
+extra_json	text	YES		NULL	
+startdatum	date	YES		NULL	
+enddatum	date	YES		NULL	
+bild	varchar(500)	YES		NULL	
+erstellt_am	timestamp	NO		current_timestamp()	
+letzter_login	timestamp	YES		NULL	
+profilbild	varchar(500)	YES		NULL	
+firmenlogo	varchar(500)	YES		NULL	
+firma_name	varchar(255)	YES		NULL	
+firma_adresse	varchar(255)	YES		NULL	
+firma_telefon	varchar(50)	YES		NULL	
+firma_email	varchar(255)	YES		NULL	
+firma_website	varchar(255)	YES		NULL	
+titelbild	varchar(500)	YES		NULL	
+public_image_source	enum('profil','logo')	YES		profil	
+show_profilbild_public	tinyint(1)	YES		1	
+show_firmenlogo_public	tinyint(1)	YES		1	
+show_titelbild_public	tinyint(1)	YES		1	
+deleted_at	datetime	YES		NULL	
+created_at	datetime	YES		current_timestamp()	
+updated_at	datetime	YES		current_timestamp()	on update current_timestamp()
+heimatland	varchar(100)	YES		NULL	
+position	varchar(100)	YES		NULL	
+wohnung_id	int(11)	YES	MUL	NULL	
+beruf	varchar(100)	YES		NULL	
+profile_vis	longtext	YES		NULL	
+invite_status	enum('none','invited','opened','accepted','profile_updated','expired')	NO		none	
+invite_token_hash	char(64)	YES		NULL	
+invite_expires	datetime	YES		NULL	
+invite_last_opened_at	datetime	YES	MUL	NULL	
+invited_by	int(11)	YES		NULL	
+invited_at	datetime	YES	MUL	NULL	
+first_login_at	datetime	YES		NULL	
+last_login_at	datetime	YES		NULL	
+profile_updated_at	datetime	YES		NULL	
+vis_geburtsdatum	enum('privat','intern','oeffentlich')	YES		privat	
+vis_heimatland	enum('privat','intern','oeffentlich')	YES		privat	
+vis_position	enum('privat','intern','oeffentlich')	YES		privat	
+vis_aufenthaltstitel	enum('privat','intern','oeffentlich')	YES		privat	
+vis_beruf	enum('privat','intern','oeffentlich')	YES		privat	
+vorname	varchar(100)	YES		NULL	
+nachname	varchar(100)	YES		NULL	
+strasse	varchar(150)	YES		NULL	
+hausnummer	varchar(20)	YES		NULL	
+plz	varchar(20)	YES		NULL	
+ort	varchar(120)	YES		NULL	
+aufenthaltstitel	varchar(100)	YES		NULL	
+firma_strasse	varchar(150)	YES		NULL	
+firma_hausnummer	varchar(20)	YES		NULL	
+firma_plz	varchar(20)	YES		NULL	
+firma_ort	varchar(120)	YES		NULL	
+person_type_id	int(11)	YES	MUL	NULL	
+person_status_id	int(11)	YES	MUL	NULL	
+labels_json	longtext	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+wohnung_id	int(11)	YES	MUL	NULL	
+vorname	varchar(100)	NO		NULL	
+nachname	varchar(100)	NO		NULL	
+email	varchar(255)	NO		NULL	
+telefon	varchar(50)	YES		NULL	
+geburtsdatum	date	YES		NULL	
+gehalt_monat	decimal(12,2)	YES		NULL	
+beruf	varchar(255)	YES		NULL	
+arbeitgeber	varchar(255)	YES		NULL	
+anzahl_personen	int(11)	YES		1	
+haustiere	text	YES		NULL	
+instrumente	text	YES		NULL	
+bemerkungen	text	YES		NULL	
+status	enum('neu','eingeladen','abgelehnt','angenommen')	YES		neu	
+erstellt_am	timestamp	NO		current_timestamp()	

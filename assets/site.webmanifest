@@ -1,0 +1,32 @@
+{
+    "name": "pendenz.com",
+    "short_name": "pendenz",
+    "start_url": "/pendenz.com/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#0ea5a0",
+    "icons": [
+        {
+            "src": "brand/favicon-16.png",
+            "sizes": "16x16",
+            "type": "image/png"
+        },
+        {
+            "src": "brand/favicon-32.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
+        {
+            "src": "brand/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "maskable any"
+        },
+        {
+            "src": "brand/logo-mark.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

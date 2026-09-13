@@ -1,0 +1,82 @@
+/* === Basisstruktur für ALLE Navbars === */
+nav.main-nav {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .25rem .5rem;
+  background: #0b1220; /* dunkler Hintergrund */
+}
+
+nav.main-nav > a.brand {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: .6rem;
+  white-space: nowrap;
+  min-height: 48px;
+  line-height: 1;
+  padding: 0 .72rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: #fff;
+  text-decoration: none;
+}
+
+nav.main-nav > a.brand span {
+  display: inline-block;
+  line-height: 1;
+  color: #fff;
+  font-weight: 800;
+}
+
+nav.main-nav a.brand > picture > img,
+nav.main-nav a.brand > img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+nav.main-nav .menu {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav.main-nav .menu > li > a {
+  color: #fff;
+  min-height: 48px;
+  line-height: 1;
+  padding: 0 .72rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  text-decoration: none;
+}
+
+nav.main-nav .menu > li.active > a,
+nav.main-nav .menu > li > a:hover {
+  background: rgba(59,130,246,.25);
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+nav.main-nav .menu .spacer {
+  flex: 1 1 auto;
+}
+
+nav.main-nav .menu .muted {
+  opacity: .9;
+  color: #c9d5e8;
+}
+
+/* Optional: Simulationsanzeige (falls genutzt) */
+nav.main-nav .menu .sim {
+  opacity: .9;
+  margin-left: 8px;
+  color: #c9d5e8;
+}

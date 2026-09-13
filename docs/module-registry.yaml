@@ -1,0 +1,42 @@
+modules:
+  - key: benutzer
+    path: app/modules/benutzer
+    routes: ["/benutzer", "/api/benutzer/*"]
+    db: ["benutzer","user_meta"]
+    depends_on: ["core"]
+
+  - key: projekte
+    path: app/modules/projekte
+    routes: ["/projekte", "/projekt/:id"]
+    db: ["projekte","projekt_meta"]
+    depends_on: ["core","benutzer"]
+
+  - key: pendenzen
+    path: app/modules/pendenzen
+    routes: ["/pendenzen", "/api/pendenzen/*"]
+    db: ["pendenzen","pendenzen_meta","pendenz_acl"]
+    depends_on: ["core","projekte","storage","vorlagen"]
+
+  - key: storage
+    path: app/modules/storage
+    routes: ["/storage", "/ordner*", "/api/storage/*"]
+    db: ["storage_nodes","storage_links"]
+    depends_on: ["core"]
+
+  - key: vorlagen
+    path: app/modules/vorlagen
+    routes: ["/vorlagen", "/api/vorlagen/*"]
+    db: ["vorlagen","export_profiles"]
+    depends_on: ["core","projekte"]
+
+  - key: notifications
+    path: app/modules/notifications
+    routes: ["/notifications", "/api/notify/*"]
+    db: ["notifications","notification_queue"]
+    depends_on: ["core","pendenzen","benutzer"]
+
+notes:
+  db_audit_sql:
+    - "SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) MB FROM information_schema.TABLES WHERE table_schema=DATABASE() ORDER BY MB DESC;"
+    - "SELECT table_name, column_name, data_type, character_maximum_length FROM information_schema.COLUMNS WHERE table_schema=DATABASE() AND data_type IN ('text','mediumtext','longtext','blob','mediumblob','longblob');"
+    - "SELECT t.table_name, c.column_name FROM information_schema.COLUMNS c JOIN information_schema.TABLES t USING (table_name, table_schema) LEFT JOIN information_schema.STATISTICS s ON s.table_schema=c.table_schema AND s.table_name=c.table_name AND s.column_name=c.column_name WHERE c.table_schema=DATABASE() AND t.table_type='BASE TABLE' AND c.column_key='' AND c.column_name REGEXP '(.*_id|created_at|updated_at)' ORDER BY t.table_name;"

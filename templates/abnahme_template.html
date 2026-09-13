@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Wohnungsabnahme Protokoll</title>
+    <style>
+        @page { margin: 1.5cm; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.3; color: #1a1a1a; margin: 0; padding: 0; font-size: 9pt; }
+        .mp-green { color: #007a3d; }
+        .mp-bg-green { background-color: #007a3d; color: white; }
+        
+        .header { margin-bottom: 20px; border-bottom: 3px solid #007a3d; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .title { font-size: 16pt; font-weight: bold; color: #007a3d; }
+        .ref { font-size: 8pt; color: #666; text-align: right; }
+        
+        .section-header { background-color: #007a3d; color: white; padding: 3px 8px; font-weight: bold; margin: 15px 0 8px 0; font-size: 10pt; text-transform: uppercase; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th { text-align: left; background-color: #f2f2f2; padding: 5px; font-size: 8pt; border: 1px solid #ccc; }
+        td { padding: 5px; vertical-align: top; border: 1px solid #ccc; }
+        
+        .label { font-weight: bold; color: #444; font-size: 8pt; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        .value { font-weight: bold; font-size: 10pt; }
+        
+        .status-ok { color: #007a3d; font-weight: bold; }
+        .status-defect { color: #d32f2f; font-weight: bold; }
+        
+        .footer { margin-top: 30px; }
+        .sig-container { display: flex; justify-content: space-between; gap: 20px; margin-top: 20px; }
+        .sig-box { width: 48%; border: 1px solid #ccc; border-radius: 4px; padding: 10px; background-color: #fdfdfd; }
+        .sig-img { max-height: 70px; display: block; margin: 5px auto; }
+        .sig-label { border-top: 1px solid #999; margin-top: 10px; padding-top: 3px; text-align: center; font-size: 8pt; font-weight: bold; }
+        
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .info-box { border: 1px solid #eee; padding: 8px; background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="title">Wohnungsabnahme-Protokoll</div>
+        <div class="ref">Referenz: [[REFERENZ_NR]]<br>Datum: [[DATUM]]</div>
+    </div>
+
+    <div class="section-header">1. Objekt & Beteiligte</div>
+    <table style="border: none;">
+        <tr>
+            <td width="50%" style="border: 1px solid #eee; background-color: #f9f9f9; padding: 10px;">
+                <span class="label">Liegenschaft / Objekt</span>
+                <div class="value">[[PROJEKT_NAME]] / [[OBJEKT_NAME]]</div>
+                <div style="margin-top:10px;">
+                    <span class="label">Einheit / Etage</span>
+                    <div class="value">[[WOHNUNG_NAME]] / [[ETAGE]]</div>
+                </div>
+            </td>
+            <td width="50%" style="border: 1px solid #eee; background-color: #f9f9f9; padding: 10px;">
+                <span class="label">Mieter / Abnehmer</span>
+                <div class="value">[[MIETER_NAME]]</div>
+                <div style="margin-top:10px;">
+                    <span class="label">Vermieter / Verwaltung</span>
+                    <div class="value">[[VERMIETER_FIRMA]]</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-header">2. Zählerstände</div>
+    <table>
+        <tr>
+            <th width="33%">Strom (kWh)</th>
+            <th width="33%">Wasser (m³)</th>
+            <th width="34%">Heizung / Sonstige</th>
+        </tr>
+        <tr>
+            <td class="value" style="text-align: center; padding: 10px;">[[STROM_ZAEHLER]]</td>
+            <td class="value" style="text-align: center; padding: 10px;">[[WASSER_ZAEHLER]]</td>
+            <td class="value" style="text-align: center; padding: 10px;">[[HEIZUNG_ZAEHLER]]</td>
+        </tr>
+    </table>
+
+    <div class="section-header">3. ZUSTAND DER RÄUMLICHKEITEN</div>
+    <table>
+        <thead>
+            <tr>
+                <th width="20%">Raum / Bauteil</th>
+                <th width="10%" style="text-align: center;">Zustand</th>
+                <th width="20%">Titel</th>
+                <th>Bemerkungen / Mängel / Vereinbarungen</th>
+            </tr>
+        </thead>
+        <tbody>
+            [[CHECKLISTE_ROWS]]
+        </tbody>
+    </table>
+
+    <div class="section-header">4. Schlüsselübergabe</div>
+    <table>
+        <thead>
+            <tr>
+                <th width="70%">Schlüsseltyp / Bezeichnung</th>
+                <th width="30%" style="text-align: center;">Anzahl erhalten</th>
+            </tr>
+        </thead>
+        <tbody>
+            [[SCHLUESSEL_ROWS]]
+        </tbody>
+    </table>
+
+    <div class="section-header">5. Bestätigung & Unterschriften</div>
+    <p style="font-size: 8pt; color: #555; margin-bottom: 20px;">
+        Die Unterzeichnenden bestätigen hiermit die Richtigkeit der oben gemachten Angaben. Nachträglich entdeckte Mängel müssen innerhalb von 10 Tagen schriftlich gemeldet werden. 
+        Die Schlüssel wurden wie oben aufgeführt übergeben.
+    </p>
+
+    <table style="border: none; width: 100%;">
+        <tr>
+            <td width="48%" style="border: 1px solid #ccc; padding: 10px; background-color: #fdfdfd; height: 100px; vertical-align: bottom;">
+                <div style="text-align: center;">[[SIGNATURE_VERMIETER]]</div>
+                <div class="sig-label">Unterschrift Vermieter / Verwaltung<br><span style="font-weight:normal; font-size:7pt;">Vertreten durch: [[VERWALTER_NAME]]</span></div>
+            </td>
+            <td width="4%"></td>
+            <td width="48%" style="border: 1px solid #ccc; padding: 10px; background-color: #fdfdfd; height: 100px; vertical-align: bottom;">
+                <div style="text-align: center;">[[SIGNATURE_MIETER]]</div>
+                <div class="sig-label">Unterschrift Mieter</div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 30px; text-align: center; font-size: 7pt; color: #999;">
+        Dieses Protokoll wurde digital erstellt und archiviert. &copy; [[VERMIETER_FIRMA]]
+    </div>
+
+</body>
+</html>

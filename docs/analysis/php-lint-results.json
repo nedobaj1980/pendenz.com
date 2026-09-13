@@ -1,0 +1,11 @@
+{
+  "command": "C:/php/php.exe -n -l <file>",
+  "checked": 835,
+  "errors": [
+    {
+      "path": "migration_online_columns.php",
+      "exit": 255,
+      "output": "\nParse error: syntax error, unexpected token \"]\", expecting \"-\" or identifier or variable or number in migration_online_columns.php on line 158\nErrors parsing migration_online_columns.php\n"
+    }
+  ]
+}

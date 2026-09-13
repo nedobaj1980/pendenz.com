@@ -1,0 +1,863 @@
+[
+  [
+    "api/ai_chat_messages - Kopie (2).php",
+    "api/ai_chat_messages - Kopie.php"
+  ],
+  [
+    "api/migrate_lists.php",
+    "api/migrate_lists2.php"
+  ],
+  [
+    "debug_schema_status.php",
+    "pages/debug_schema_status.php"
+  ],
+  [
+    "debug_task.php",
+    "pages/aus homepage/debug_task.php",
+    "pages/debug_task.php"
+  ],
+  [
+    "includes/authz - Kopie.php",
+    "includes/authz.php"
+  ],
+  [
+    "includes/pendenz_workflow.php",
+    "pages/pages per 07.05.2026/pendenz_work.php",
+    "pages/pendenz_work.php"
+  ],
+  [
+    "migrate_live.php",
+    "mysql/migrate_live.php"
+  ],
+  [
+    "pages/abnahme.php",
+    "pages/pages per 07.05.2026/abnahme.php"
+  ],
+  [
+    "pages/abnahmen.php",
+    "pages/pages per 07.05.2026/abnahmen.php"
+  ],
+  [
+    "pages/abnahme_action.php",
+    "pages/pages per 07.05.2026/abnahme_action.php"
+  ],
+  [
+    "pages/abnahme_edit.php",
+    "pages/pages per 07.05.2026/abnahme_edit.php"
+  ],
+  [
+    "pages/abnahme_neu.php",
+    "pages/pages per 07.05.2026/abnahme_neu.php"
+  ],
+  [
+    "pages/abnahme_save.php",
+    "pages/pages per 07.05.2026/abnahme_save.php"
+  ],
+  [
+    "pages/accept_invite.php",
+    "pages/pages per 07.05.2026/accept_invite.php"
+  ],
+  [
+    "pages/admin_matrix_hub.php",
+    "pages/pages per 07.05.2026/admin_matrix_hub.php"
+  ],
+  [
+    "pages/ai_assistant - Kopie.php",
+    "pages/pages per 07.05.2026/ai_assistant - Kopie.php"
+  ],
+  [
+    "pages/ai_assistant.php",
+    "pages/pages per 07.05.2026/ai_assistant.php"
+  ],
+  [
+    "pages/ajax_applicants.php",
+    "pages/pages per 07.05.2026/ajax_applicants.php"
+  ],
+  [
+    "pages/ajax_template_preview.php",
+    "pages/pages per 07.05.2026/ajax_template_preview.php"
+  ],
+  [
+    "pages/ajax_unit_applicants.php",
+    "pages/pages per 07.05.2026/ajax_unit_applicants.php"
+  ],
+  [
+    "pages/ajax_unit_rooms.php",
+    "pages/pages per 07.05.2026/ajax_unit_rooms.php"
+  ],
+  [
+    "pages/anfrage.php",
+    "pages/pages per 07.05.2026/anfrage.php"
+  ],
+  [
+    "pages/api_smarttable.php",
+    "pages/pages per 07.05.2026/api_smarttable.php"
+  ],
+  [
+    "pages/aus homepage/check_cols.php",
+    "pages/check_cols.php",
+    "scratch/check_cols.php"
+  ],
+  [
+    "pages/aus homepage/pendenzen_.php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (8).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (9).php",
+    "pages/pendenzen - Kopie (8).php",
+    "pages/pendenzen - Kopie (9).php"
+  ],
+  [
+    "pages/benachrichtigungen.php",
+    "pages/pages per 07.05.2026/benachrichtigungen.php"
+  ],
+  [
+    "pages/benutzer - Kopie (2).php",
+    "pages/pages per 07.05.2026/benutzer - Kopie (2).php"
+  ],
+  [
+    "pages/benutzer - Kopie (3).php",
+    "pages/pages per 07.05.2026/benutzer - Kopie (3).php"
+  ],
+  [
+    "pages/benutzer - Kopie.php",
+    "pages/pages per 07.05.2026/benutzer - Kopie.php"
+  ],
+  [
+    "pages/benutzereinstellungen.php",
+    "pages/pages per 07.05.2026/benutzereinstellungen.php"
+  ],
+  [
+    "pages/bewerbung.php",
+    "pages/pages per 07.05.2026/bewerbung.php"
+  ],
+  [
+    "pages/bkp_codes.php",
+    "pages/pages per 07.05.2026/bkp_codes.php"
+  ],
+  [
+    "pages/brain_migration.php",
+    "pages/pages per 07.05.2026/brain_migration.php"
+  ],
+  [
+    "pages/chat.php",
+    "pages/pages per 07.05.2026/chat.php"
+  ],
+  [
+    "pages/check_headers.php",
+    "pages/pages per 07.05.2026/check_headers.php"
+  ],
+  [
+    "pages/check_schema_bkp.php",
+    "scratch/check_schema_bkp.php"
+  ],
+  [
+    "pages/check_task.php",
+    "pages/pages per 07.05.2026/check_task.php"
+  ],
+  [
+    "pages/check_u4.php",
+    "pages/pages per 07.05.2026/check_u4.php"
+  ],
+  [
+    "pages/cleanup_temp.php",
+    "pages/pages per 07.05.2026/cleanup_temp.php"
+  ],
+  [
+    "pages/dashboard.php",
+    "pages/pages per 07.05.2026/dashboard.php"
+  ],
+  [
+    "pages/debug_export.php",
+    "pages/pages per 07.05.2026/debug_export.php"
+  ],
+  [
+    "pages/debug_nav.php",
+    "pages/pages per 07.05.2026/debug_nav.php"
+  ],
+  [
+    "pages/debug_schema_web.php",
+    "pages/pages per 07.05.2026/debug_schema_web.php"
+  ],
+  [
+    "pages/desc_benutzer.php",
+    "pages/pages per 07.05.2026/desc_benutzer.php"
+  ],
+  [
+    "pages/dev_csp_check.php",
+    "pages/pages per 07.05.2026/dev_csp_check.php"
+  ],
+  [
+    "pages/docs.php",
+    "pages/pages per 07.05.2026/docs.php"
+  ],
+  [
+    "pages/file.php",
+    "pages/pages per 07.05.2026/file.php"
+  ],
+  [
+    "pages/files.php",
+    "pages/pages per 07.05.2026/files.php"
+  ],
+  [
+    "pages/files_master.php",
+    "pages/pages per 07.05.2026/files_master.php"
+  ],
+  [
+    "pages/finanzen.php",
+    "pages/pages per 07.05.2026/finanzen.php"
+  ],
+  [
+    "pages/firmen - Kopie (2).php",
+    "pages/pages per 07.05.2026/firmen - Kopie (2).php"
+  ],
+  [
+    "pages/firmen - Kopie.php",
+    "pages/pages per 07.05.2026/firmen - Kopie.php"
+  ],
+  [
+    "pages/firmen.php",
+    "pages/pages per 07.05.2026/firmen.php"
+  ],
+  [
+    "pages/fix_rooms_express.php",
+    "pages/pages per 07.05.2026/fix_rooms_express.php"
+  ],
+  [
+    "pages/hard_reset.php",
+    "pages/pages per 07.05.2026/hard_reset.php"
+  ],
+  [
+    "pages/idee.php",
+    "pages/pages per 07.05.2026/idee.php"
+  ],
+  [
+    "pages/interessenten.php",
+    "pages/pages per 07.05.2026/interessenten.php"
+  ],
+  [
+    "pages/interessenten_form.php",
+    "pages/pages per 07.05.2026/interessenten_form.php"
+  ],
+  [
+    "pages/interessenten_form_public.php",
+    "pages/pages per 07.05.2026/interessenten_form_public.php"
+  ],
+  [
+    "pages/interessent_invite_save.php",
+    "pages/pages per 07.05.2026/interessent_invite_save.php"
+  ],
+  [
+    "pages/invite_accept.php",
+    "pages/pages per 07.05.2026/invite_accept.php"
+  ],
+  [
+    "pages/invite_open.php",
+    "pages/pages per 07.05.2026/invite_open.php"
+  ],
+  [
+    "pages/kontakt.php",
+    "pages/pages per 07.05.2026/kontakt.php"
+  ],
+  [
+    "pages/kontodaten tabelle.sql",
+    "pages/pages per 07.05.2026/kontodaten tabelle.sql",
+    "tools/konto_verwaltung/export.php",
+    "tools/konto_verwaltung/konto_verwaltung.php"
+  ],
+  [
+    "pages/lint_all.php",
+    "pages/pages per 07.05.2026/lint_all.php"
+  ],
+  [
+    "pages/listen_settings - Kopie.php",
+    "pages/listen_settings.php",
+    "pages/pages per 07.05.2026/listen_settings - Kopie.php",
+    "pages/pages per 07.05.2026/listen_settings.php"
+  ],
+  [
+    "pages/list_users.php",
+    "pages/pages per 07.05.2026/list_users.php"
+  ],
+  [
+    "pages/login.php",
+    "pages/pages per 07.05.2026/login.php"
+  ],
+  [
+    "pages/logout.php",
+    "pages/pages per 07.05.2026/logout.php"
+  ],
+  [
+    "pages/mieter_dashboard.php",
+    "pages/pages per 07.05.2026/mieter_dashboard.php"
+  ],
+  [
+    "pages/mieter_zuweisen.php",
+    "pages/pages per 07.05.2026/mieter_zuweisen.php"
+  ],
+  [
+    "pages/neu 1invite_accept.php",
+    "pages/pages per 07.05.2026/neu 1invite_accept.php"
+  ],
+  [
+    "pages/objekt_edit.php",
+    "pages/pages per 07.05.2026/objekt_edit.php"
+  ],
+  [
+    "pages/objekt_neu.php",
+    "pages/pages per 07.05.2026/objekt_neu.php"
+  ],
+  [
+    "pages/ordnerstruktur.php",
+    "pages/pages per 07.05.2026/ordnerstruktur.php"
+  ],
+  [
+    "pages/ordner_verknuepfen.php",
+    "pages/pages per 07.05.2026/ordner_verknuepfen.php"
+  ],
+  [
+    "pages/ordner_vorlagen.php",
+    "pages/pages per 07.05.2026/ordner_vorlagen.php"
+  ],
+  [
+    "pages/ordner_vorlagen_edit.php",
+    "pages/pages per 07.05.2026/ordner_vorlagen_edit.php"
+  ],
+  [
+    "pages/ordner_vorlagen_new.php",
+    "pages/pages per 07.05.2026/ordner_vorlagen_new.php"
+  ],
+  [
+    "pages/ordner_vorlage_apply.php",
+    "pages/pages per 07.05.2026/ordner_vorlage_apply.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/password_reset.php",
+    "pages/password_reset.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pdf_designer.php",
+    "pages/pdf_designer.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (10).php",
+    "pages/pendenzen - Kopie (10).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (11).php",
+    "pages/pendenzen - Kopie (11).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (12).php",
+    "pages/pendenzen - Kopie (12).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (13).php",
+    "pages/pendenzen - Kopie (13).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (14).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (15).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (16).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (22).php",
+    "pages/pendenzen - Kopie (14).php",
+    "pages/pendenzen - Kopie (15).php",
+    "pages/pendenzen - Kopie (16).php",
+    "pages/pendenzen - Kopie (22).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (17).php",
+    "pages/pendenzen - Kopie (17).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (18).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (19).php",
+    "pages/pages per 07.05.2026/pendenzen - Kopie (20).php",
+    "pages/pendenzen - Kopie (18).php",
+    "pages/pendenzen - Kopie (19).php",
+    "pages/pendenzen - Kopie (20).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (2).php",
+    "pages/pendenzen - Kopie (2).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (21).php",
+    "pages/pendenzen - Kopie (21).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (23).php",
+    "pages/pendenzen - Kopie (23).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (3).php",
+    "pages/pendenzen - Kopie (3).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (4).php",
+    "pages/pendenzen - Kopie (4).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (5).php",
+    "pages/pendenzen - Kopie (5).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (6).php",
+    "pages/pendenzen - Kopie (6).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie (7).php",
+    "pages/pendenzen - Kopie (7).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen - Kopie.php",
+    "pages/pendenzen - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenzen_settings.php",
+    "pages/pendenzen_settings.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_inbox.php",
+    "pages/pendenz_inbox.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_invite.php",
+    "pages/pendenz_invite.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien - Kopie (2).php",
+    "pages/pages per 07.05.2026/pendenz_kategorien-Kopie(2).php",
+    "pages/pendenz_kategorien - Kopie (2).php",
+    "pages/pendenz_kategorien-Kopie(2).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien - Kopie.php",
+    "pages/pages per 07.05.2026/pendenz_kategorien-Kopie.php",
+    "pages/pendenz_kategorien - Kopie.php",
+    "pages/pendenz_kategorien-Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien.php",
+    "pages/pendenz_kategorien.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien_mieter - Kopie.php",
+    "pages/pendenz_kategorien_mieter - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien_mieter.php",
+    "pages/pendenz_kategorien_mieter.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien_unternehmer.php",
+    "pages/pendenz_kategorien_unternehmer.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien_vermieter - Kopie.php",
+    "pages/pendenz_kategorien_vermieter - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_kategorien_vermieter.php",
+    "pages/pendenz_kategorien_vermieter.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (2).php",
+    "pages/pages per 07.05.2026/pendenz_neu modern.php",
+    "pages/pendenz_neu - Kopie (2).php",
+    "pages/pendenz_neu modern.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (3).php",
+    "pages/pendenz_neu - Kopie (3).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (4).php",
+    "pages/pendenz_neu - Kopie (4).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (5).php",
+    "pages/pendenz_neu - Kopie (5).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (6).php",
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (7).php",
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (8).php",
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie (9).php",
+    "pages/pendenz_neu - Kopie (6).php",
+    "pages/pendenz_neu - Kopie (7).php",
+    "pages/pendenz_neu - Kopie (8).php",
+    "pages/pendenz_neu - Kopie (9).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu - Kopie.php",
+    "pages/pendenz_neu - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_neu_modern.php",
+    "pages/pendenz_neu_modern.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_ordner.php",
+    "pages/pendenz_ordner.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_response.php",
+    "pages/pendenz_response.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_review.php",
+    "pages/pendenz_review.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/pendenz_vorlagen.php",
+    "pages/pendenz_vorlagen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/personen_taxonomie.php",
+    "pages/personen_taxonomie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/profil - Kopie (2).php",
+    "pages/profil - Kopie (2).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/profil - Kopie.php",
+    "pages/profil - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/profile_fill.php",
+    "pages/profile_fill.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/project_storage.php",
+    "pages/project_storage.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekte.php",
+    "pages/projekte.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekt_baum.php",
+    "pages/projekt_baum.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekt_bearbeiten.php",
+    "pages/projekt_bearbeiten.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekt_detail.php",
+    "pages/projekt_detail.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekt_verknuepfungen.php",
+    "pages/projekt_verknuepfungen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/projekt_waehlen.php",
+    "pages/projekt_waehlen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/public_profile.php",
+    "pages/public_profile.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/quick_folder_editor.php",
+    "pages/quick_folder_editor.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/schema_check.php",
+    "pages/schema_check.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/schema_to_file.php",
+    "pages/schema_to_file.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/secret_reset_temp.php",
+    "pages/secret_reset_temp.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/settings.php",
+    "pages/settings.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/setup.php",
+    "pages/setup.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/set_password.php",
+    "pages/set_password.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/storage_manager.php",
+    "pages/storage_manager.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/struktur_einbauen.php",
+    "pages/struktur_einbauen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/sync_drive_real.php",
+    "pages/sync_drive_real.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/sync_v2.php",
+    "pages/sync_v2.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/system_settings.php",
+    "pages/system_settings.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/tables.php",
+    "pages/tables.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/table_rows.php",
+    "pages/table_rows.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/teams.php",
+    "pages/teams.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/temp_script1.js",
+    "pages/temp_script1.js"
+  ],
+  [
+    "pages/pages per 07.05.2026/temp_script2.js",
+    "pages/temp_script2.js"
+  ],
+  [
+    "pages/pages per 07.05.2026/test_context.php",
+    "pages/test_context.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/test_schema.php",
+    "pages/test_schema.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/test_schema2.php",
+    "pages/test_schema2.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/ueber_uns.php",
+    "pages/ueber_uns.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/unterkategorie_bearbeiten.php",
+    "pages/unterkategorie_bearbeiten.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/unterkategorie_loeschen.php",
+    "pages/unterkategorie_loeschen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/unterkategorie_neu.php",
+    "pages/unterkategorie_neu.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/user_events.php",
+    "pages/user_events.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/user_taxonomy.php",
+    "pages/user_taxonomy.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vermietungseinheiten.php",
+    "pages/vermietungseinheiten.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vertrag_gen.php",
+    "pages/vertrag_gen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vertrag_save.php",
+    "pages/vertrag_save.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorgangsart_settings - Kopie (2).php",
+    "pages/vorgangsart_settings - Kopie (2).php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorgangsart_settings - Kopie.php",
+    "pages/vorgangsart_settings - Kopie.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorgangsart_settings.php",
+    "pages/vorgangsart_settings.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlagen.php",
+    "pages/vorlagen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlage_bearbeiten.php",
+    "pages/vorlage_bearbeiten.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlage_loeschen.php",
+    "pages/vorlage_loeschen.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlage_reset_neu.php",
+    "pages/vorlage_reset_neu.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlage_sync_fs.php",
+    "pages/vorlage_sync_fs.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/vorlage_tree.php",
+    "pages/vorlage_tree.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/wohnungen_import_fs.php",
+    "pages/wohnungen_import_fs.php"
+  ],
+  [
+    "pages/pages per 07.05.2026/wohnung_detail.php",
+    "pages/wohnung_detail.php"
+  ],
+  [
+    "pages/test_delete_diagnostic.php",
+    "scratch/test_delete_diagnostic.php"
+  ],
+  [
+    "scratch/check_pendenzen.php",
+    "scratch_db_pendenzen.php"
+  ],
+  [
+    "sql/2025-09-14_add_sort_index.sql",
+    "sql/alle tabellen/2025-09-14_add_sort_index.sql"
+  ],
+  [
+    "sql/2025-09-18_smarttable_config.sql",
+    "sql/alle tabellen/2025-09-18_smarttable_config.sql"
+  ],
+  [
+    "sql/alle tabellen/2025-09-13_rbac_and_audit.sql",
+    "sql/migrations/2025-09-13_rbac_and_audit.sql"
+  ],
+  [
+    "sql/alle tabellen/2025-09-15_insert_demo_daten_mit_bilder.sql",
+    "sql/zusätzliche geladen/2025-09-15_insert_demo_daten_mit_bilder.sql"
+  ],
+  [
+    "sql/alle tabellen/alle tabellen ergänzen.sql",
+    "sql/zusätzliche geladen/alle tabellen ergänzen.sql"
+  ],
+  [
+    "sql/alle tabellen/create_anhaenge_table.sql",
+    "sql/create_anhaenge_table.sql"
+  ],
+  [
+    "sql/alle tabellen/create_benutzer_table.sql",
+    "sql/create_benutzer_table.sql"
+  ],
+  [
+    "sql/alle tabellen/create_benutzer_table_passwort.sql",
+    "sql/create_benutzer_table_passwort.sql"
+  ],
+  [
+    "sql/alle tabellen/create_pendenzen_table.sql",
+    "sql/create_pendenzen_table.sql"
+  ],
+  [
+    "sql/alle tabellen/create_projekte_table.sql",
+    "sql/create_projekte_table.sql"
+  ],
+  [
+    "sql/alle tabellen/erweiterung projekte.sql",
+    "sql/zusätzliche geladen/erweiterung projekte.sql"
+  ],
+  [
+    "sql/alle tabellen/Indexe für Performance.sql",
+    "sql/zusätzliche geladen/Indexe für Performance.sql"
+  ],
+  [
+    "sql/alle tabellen/JSON Gerenerated Columns.sql",
+    "sql/zusätzliche geladen/JSON Gerenerated Columns.sql"
+  ],
+  [
+    "sql/alle tabellen/JSON-Keys indizierbar machen.sql",
+    "sql/zusätzliche geladen/JSON-Keys indizierbar machen.sql"
+  ],
+  [
+    "sql/alle tabellen/kontodaten tabelle.sql",
+    "sql/kontodaten tabelle.sql"
+  ],
+  [
+    "sql/alle tabellen/liegenschafts_konto (2).sql",
+    "sql/liegenschafts_konto.sql"
+  ],
+  [
+    "sql/alle tabellen/liegenschafts_konto.sql",
+    "tools/konto_verwaltung/sql/liegenschafts_konto.sql"
+  ],
+  [
+    "sql/alle tabellen/liegenschafts_konto_ergänzungen.sql",
+    "sql/liegenschafts_konto_ergänzungen.sql",
+    "tools/konto_verwaltung/liegenschafts_konto_ergänzungen.sql"
+  ],
+  [
+    "sql/alle tabellen/passwort und benutzername.sql",
+    "sql/passwort und benutzername.sql"
+  ],
+  [
+    "sql/alle tabellen/pendenz2.sql",
+    "sql/zusätzliche geladen/pendenz2.sql"
+  ],
+  [
+    "sql/alle tabellen/pendenzen zusatztabellen abhängigkeiten.sql",
+    "sql/pendenzen zusatztabellen abhängigkeiten.sql"
+  ],
+  [
+    "sql/alle tabellen/projekte befüllen.sql",
+    "tools/konto_verwaltung/sql/projekte befüllen.sql"
+  ],
+  [
+    "sql/alle tabellen/SQL-Erweiterungen pendenzen.sql",
+    "sql/SQL-Erweiterungen pendenzen.sql"
+  ],
+  [
+    "sql/alle tabellen/Superadmin Nedim.sql",
+    "sql/Superadmin Nedim.sql"
+  ],
+  [
+    "sql/alle tabellen/vendor.sql",
+    "sql/zusätzliche geladen/vendor.sql"
+  ],
+  [
+    "sql/alle tabellen/wohnung_label zusat kategorie.sql",
+    "tools/konto_verwaltung/sql/wohnung_label zusat kategorie.sql"
+  ],
+  [
+    "sql/Benutzer sql/11_chat einstellungen.sql",
+    "sql/Benutzer sql/12_User pma anlegen + Rechte.sql"
+  ],
+  [
+    "sql/sql wiederherstellung/17_smarttable erweitern binds nav scopes.sql",
+    "sql/sql wiederherstellung/21_SmartTable um „Binds, Nav & Scopes“ erweitern.sql"
+  ],
+  [
+    "sql/sql wiederherstellung/18_als SmartTable registrieren.sql",
+    "sql/sql wiederherstellung/22_pendenzen als SmartTable registrieren.sql"
+  ],
+  [
+    "sql/sql wiederherstellung/23_benutzerbilder.sql",
+    "sql/sql wiederherstellung/25_move_uploaded_file.sql"
+  ],
+  [
+    "sql/sql wiederherstellung/36_6. Mieter-Zuordnung (Wohnung ↔ Benutzer).sql",
+    "sql/sql wiederherstellung/44_wohnung_mieter.sql"
+  ],
+  [
+    "sql/sql wiederherstellung/37_Bestehende Tabellen löschen.sql",
+    "sql/sql wiederherstellung/41_Alle betroffenen Tabellen explizit löschen.sql"
+  ],
+  [
+    "tmp.php",
+    "tmp2.php"
+  ]
+]

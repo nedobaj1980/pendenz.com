@@ -1,0 +1,64 @@
+:root{
+  --b:#0f172a; --m:#64748b; --bd:#e6eaef; --bg:#fff; --acc:#06b6d4;
+  --shadow: 0 12px 28px rgba(2,8,23,.06), 0 2px 8px rgba(2,8,23,.05);
+  --r:14px;
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.sts-wrap{ padding:14px; font-family:var(--font); color:var(--b) }
+.sts-head h1{ margin:.2rem 0 0; font-size:1.6rem }
+.sts-head p{ margin:.3rem 0 1rem; color:var(--m) }
+.sts-panel{ background:var(--bg); border:1px solid var(--bd); border-radius:16px; box-shadow:var(--shadow); padding:12px }
+
+.sts-toolbar{ display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px }
+.sts-field label{ display:block; font-size:.85rem; color:var(--m); margin-bottom:4px }
+.sts-field select, .sts-inline input, .sts-field input{
+  padding:10px 12px; border:1px solid var(--bd); border-radius:10px; min-width:220px;
+}
+.sts-inline{ display:flex; gap:6px; align-items:center; background:#fff; border:1px solid var(--bd); border-radius:10px; padding:6px 10px }
+.sts-inline input{ border:0; outline:0; min-width:180px }
+.sts-flex{ flex:1 }
+
+.sts-btn{
+  padding:10px 14px; border:1px solid var(--bd); background:#fff; border-radius:10px; cursor:pointer; font-weight:600;
+}
+.sts-btn--primary{ background:linear-gradient(180deg, #8ff0ff, var(--acc)); color:#04242b; border-color:transparent }
+.sts-btn--danger{ background:#ffe9ec; color:#5b1623; border-color:#ffd0d9 }
+.sts-btn--sm{ padding:6px 10px; font-size:.9rem }
+
+.sts-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px }
+.sts-col{ border:1px solid var(--bd); border-radius:12px; padding:10px; background:#fff; min-height:320px }
+.sts-col-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px }
+.sts-actions{ display:flex; gap:8px }
+
+.sts-list{ list-style:none; padding:0; margin:0; }
+.sts-item{ display:flex; align-items:center; border:1px solid var(--bd); border-radius:10px; padding:6px; margin:6px 0; gap:8px; background:#fafcff }
+.sts-item.dragging{ opacity:.7 }
+.sts-handle{ cursor:grab; user-select:none; width:26px; text-align:center; font-weight:700; opacity:.6 }
+.sts-item-main{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; flex:1 }
+.sts-item-main strong{ font-weight:700 }
+.sts-item-main em{ color:var(--m); font-style:normal }
+.sts-item-main code{ background:#f2f6fb; padding:2px 6px; border-radius:8px; border:1px solid var(--bd) }
+
+.sts-form .sts-row{ display:flex; flex-direction:column; gap:6px; margin:8px 0 }
+.sts-form input, .sts-form select, .sts-form textarea{
+  padding:10px 12px; border:1px solid var(--bd); border-radius:10px; background:#fff;
+}
+.sts-switch{ display:flex; gap:8px; align-items:center }
+
+.sts-note{ margin-top:10px; color:var(--m) }
+
+/* Column Picker basics reused (falls smarttable.css nicht geladen ist) */
+.st-colpicker{ position: fixed; inset: 0; z-index: 9999; display: none; }
+.st-colpicker.open{ display: block; }
+.st-colpicker__backdrop{ position:absolute; inset:0; }
+.st-colpicker__sheet{
+  background:#fff; border:1px solid var(--bd); border-radius:12px; box-shadow:var(--shadow);
+  width:420px; max-width:92vw; display:grid; grid-template-rows:auto 1fr auto; outline:0;
+}
+.st-colpicker__head, .st-colpicker__foot{ padding:10px; border-bottom:1px solid var(--bd) }
+.st-colpicker__foot{ border-bottom:0; border-top:1px solid var(--bd); display:flex; justify-content:flex-end }
+.st-colpicker__body{ padding:10px; display:grid; gap:10px; max-height:60vh; overflow:auto }
+.st-colpicker__actions{ display:flex; gap:8px; flex-wrap:wrap }
+.st-colpicker__list{ display:grid; gap:6px }
+.st-colpicker__item{ display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:8px; }
+.st-colpicker__item:hover{ background:#f5f9ff }

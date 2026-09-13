@@ -1,0 +1,8 @@
+07_Konten Bewegungen sauber verknüpfbar machen.sqALTER TABLE kv_konten
+  ADD COLUMN IF NOT EXISTS liegenschaft_id INT NULL,  -- Objekt
+  ADD COLUMN IF NOT EXISTS projekt_id     INT NULL;
+
+-- Für Zeilen-Ebene (dein "liegenschafts_konto") zusätzlich:
+ALTER TABLE liegenschafts_konto
+  ADD COLUMN IF NOT EXISTS wohnung_id INT NULL,       -- echte FK statt nur Label
+  ADD COLUMN IF NOT EXISTS wohnung_label VARCHAR(100) NULL;

@@ -1,0 +1,16 @@
+{
+  "name": "pendenz.com",
+  "short_name": "Pendenzen",
+  "description": "Effizientes Pendenzen-Management für die Baustelle",
+  "start_url": "./pages/pendenzen.php",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "./assets/brand/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+/* === Glocke in Navbar – immer gleiche Optik === */
+.nav-notify,
+.nav-notify * { box-sizing: border-box; }
+
+.nav-bell,
+.js-notify-toggle {
+  --nb-bg:#fff; --nb-bd:#e5e7eb; --nb-fg:inherit;
+  --nb-bg-hover:#f8fafc; --nb-bd-hover:#d1d5db;
+  --nb-ring:rgba(147,197,253,.45); --nb-bg-active:#eef2ff;
+
+  appearance:none;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px;
+  border:1px solid var(--nb-bd); border-radius:10px;
+  background:var(--nb-bg); color:var(--nb-fg);
+  text-decoration:none; font:inherit; font-size:16px; line-height:1;
+  cursor:pointer; user-select:none;
+}
+.nav-bell:hover,.js-notify-toggle:hover{background:var(--nb-bg-hover);border-color:var(--nb-bd-hover)}
+.nav-bell:focus,.js-notify-toggle:focus{outline:0;box-shadow:0 0 0 3px var(--nb-ring)}
+.nav-bell.is-open,.js-notify-toggle.is-open{background:var(--nb-bg-active);border-color:var(--nb-bd-hover)}
+.nav-bell[aria-disabled="true"],.nav-bell:disabled,
+.js-notify-toggle[aria-disabled="true"],.js-notify-toggle:disabled{opacity:.6;cursor:not-allowed}
+a.nav-bell:link,a.nav-bell:visited,a.nav-bell:hover,a.nav-bell:active,
+a.js-notify-toggle:link,a.js-notify-toggle:visited,a.js-notify-toggle:hover,a.js-notify-toggle:active{color:inherit;text-decoration:none}
+
+/* Badge nur für Notifications, unabhängig von .badge auf Seiten */
+.notify-badge {
+  position:relative; min-width:18px; height:18px; padding:0 5px;
+  border-radius:10px; background:#d00; color:#fff; font-size:12px;
+  display:inline-flex; align-items:center; justify-content:center;
+  transform: translate(2px,-2px);
+}
+.notify-badge.is-zero { background:#9ca3af; }
+
+/* === Popover (Overlay) === */
+.notify-popover {
+  position: fixed; z-index: 10000; width: 320px;
+  background:#fff; border:1px solid #e7e7e7; border-radius:12px;
+  box-shadow:0 6px 24px rgba(0,0,0,.08);
+}
+.notify-popover[hidden]{ display:none !important; }
+
+.notify-head, .notify-foot { padding:10px; border-bottom:1px solid #eee; background:#f8fafc; }
+.notify-foot { border-top:1px solid #eee; border-bottom:0; background:#fff; }
+.notify-body { max-height: calc(60vh - 92px); overflow:auto; }
+
+.notify-list { list-style:none; margin:0; padding:0; }
+.notify-item {
+  display:grid; grid-template-columns:28px 1fr auto; gap:8px;
+  padding:8px 10px; border-bottom:1px solid #f3f3f3;
+}
+.notify-item:last-child { border-bottom:0; }
+.notify-item .icon { display:flex; align-items:center; justify-content:center; }
+.notify-item .title { font-weight:600; text-decoration:none; color:#0f172a; }
+.notify-item .meta { color:#777; font-size:12px; margin-top:4px; }
+.notify-empty { padding:14px; color:#666; text-align:center; }
+.loading { padding:12px; }
+
+/* Buttons NUR für Notifications (statt .btn) */
+.nbtn { cursor:pointer; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px 12px; font-size:14px; }
+.nbtn:hover { background:#f8fafc; }
+.nbtn-small { font-size:13px; padding:6px 10px; }
+.nbtn-tiny  { font-size:12px; padding:4px 6px; }
+.w-100 { width:100%; }

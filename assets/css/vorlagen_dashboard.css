@@ -1,0 +1,94 @@
+/* Container & Basics */
+.vd-container { padding:16px; }
+
+.btn { color:#111 !important; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; text-decoration:none; }
+.btn:hover { background:#f8fafc; }
+.btn:focus { outline:2px solid #2563eb; outline-offset:1px; }
+.btn-primary { background:#111827; color:#fff !important; border-color:#111827; }
+.btn-primary:hover { background:#0b1220; }
+.btn-secondary { background:#f8fafc; }
+
+.input { padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; }
+
+/* Hero */
+.vd-hero {
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;
+  padding:18px; border:1px solid #e5e7eb; border-radius:14px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  margin-bottom:14px;
+}
+.vd-hero h1 { margin:0; }
+.vd-hero p { margin:6px 0 0; color:#334155; }
+
+/* Stats */
+.vd-stats {
+  display:grid; grid-template-columns: repeat(4, minmax(160px,1fr));
+  gap:12px; margin-bottom:14px;
+}
+.stat-card {
+  background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; text-align:center;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+.stat-num { font-weight:900; font-size:24px; color:#111; }
+.stat-label { color:#475569; font-size:12px; margin-top:6px; }
+.hover-pop { transition: transform .08s ease; }
+.hover-pop:hover { transform: translateY(-2px); }
+
+/* Card */
+.card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:0; margin-bottom:14px; overflow:hidden; }
+.vd-card .card-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc;
+}
+.vd-card .card-head h2 { margin:0; }
+.vd-tools { display:flex; gap:8px; align-items:center; }
+
+.vd-search { display:flex; gap:8px; align-items:center; }
+.vd-search .input { min-width:260px; }
+
+/* Tables */
+.vd-table-wrap { overflow:auto; }
+.vd-table { width:100%; border-collapse:collapse; }
+.vd-table.modern thead th {
+  position: sticky; top:0; background:#f8fafc; z-index:1;
+  border-bottom:1px solid #e5e7eb; color:#334155; font-weight:700;
+}
+.vd-table th, .vd-table td { padding:10px 12px; border-top:1px solid #eef2f7; vertical-align:top; }
+.row-hover:hover { background:#fcfcff; }
+
+/* Chips / Badges */
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip {
+  display:inline-block; padding:4px 10px; border:1px solid #cbd5e1; border-radius:999px; font-size:12px; color:#0f172a;
+  background:#ffffff; text-decoration:none;
+}
+.chip:hover { background:#f1f5f9; }
+
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; }
+.badge-ok   { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+.badge-warn { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+
+.muted { color:#64748b; font-size:12px; }
+
+/* Name + Meta */
+.vd-name { font-weight:800; color:#0f172a; text-decoration:none; }
+.vd-name:hover { text-decoration:underline; }
+.vd-meta { display:flex; gap:6px; margin-top:4px; }
+.vd-desc { color:#334155; white-space:pre-wrap; }
+
+/* Actions */
+.vd-actions-cell { min-width:300px; }
+.vd-actions-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+.vd-inline-form { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.vd-inline-form select { padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px; }
+.btn-danger { border-color:#fca5a5 !important; }
+
+/* Responsive */
+@media (max-width: 980px){
+  .vd-stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px){
+  .vd-hero { padding:14px; }
+  .vd-search .input { min-width: 0; width: 100%; }
+  .vd-tools { width:100%; justify-content: flex-start; flex-wrap: wrap; }
+}

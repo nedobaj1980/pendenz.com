@@ -1,0 +1,63 @@
+﻿# ==========================================
+# pendenz.com - Dateien NICHT auf GitHub
+# ==========================================
+
+# Zugangsdaten / lokale Konfiguration
+.env
+.env.*
+config.php
+config - Kopie.php
+.user.ini
+
+# Datenbank-Dumps
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+ch369984_*.sql
+
+# Logs
+*.log
+logs/
+error_log*
+import_log.txt
+
+# Backups
+backups/
+*.bak
+*.backup
+
+# Temporäre Dateien
+tmp/
+.tmp.driveupload/
+scratch/
+*.tmp
+
+# Hochgeladene Benutzerdaten
+uploads/
+
+# PHP Dependencies - werden über composer.json installiert
+vendor/
+
+# Betriebssystem / Editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Diagnose-Ausgaben / Datenbank-Inhalte
+databases.txt
+db_check.txt
+schema_dump.txt
+schema_output.html
+tables.txt
+templates_dump.txt
+files_all.txt
+out.txt
+*_schema.txt
+*_cols.txt
+*_out.txt
+tmp_*.txt
+
+# Sensible PHP-Diagnose
+phpinfo.php

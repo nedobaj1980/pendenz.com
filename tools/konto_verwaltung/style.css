@@ -1,0 +1,184 @@
+/* =========================================================
+   pendenz.com – Tools: Konto-Verwaltung
+   Pfad: C:\xampp\htdocs\pendenz.com\tools\konto_verwaltung\style.css
+   ========================================================= */
+
+:root{
+  --bg:#f7f7f8;
+  --card:#ffffff;
+  --border:#e2e2e6;
+  --text:#222;
+  --muted:#666;
+  --primary:#2d89ef;
+  --primary-strong:#1b5fa7;
+  --success:#2e7d32;
+  --danger:#c62828;
+  --warning:#b26a00;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--text);}
+
+/* ---------- Container ---------- */
+.konto-container{
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 18px 18px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+
+.konto-container h2{
+  margin: 0 0 12px;
+  font-size: 1.4rem;
+}
+
+.konto-container h3{
+  margin: 18px 0 8px;
+  font-size: 1.05rem;
+  color: var(--muted);
+}
+
+/* ---------- Table Wrapper (responsive) ---------- */
+.table-wrap{
+  width:100%;
+  overflow-x:auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* ---------- Table ---------- */
+.konto-container table{
+  width:100%;
+  border-collapse: collapse;
+  min-width: 760px; /* damit Spalten nicht zu eng werden */
+}
+
+.konto-container thead th{
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f0f0f3;
+  border-bottom: 1px solid var(--border);
+  padding:10px 8px;
+  text-align:left;
+  font-weight:600;
+}
+
+.konto-container tbody td{
+  border-bottom:1px solid var(--border);
+  padding:9px 8px;
+  vertical-align: top;
+}
+
+.konto-container tbody tr:hover{
+  background:#fafafa;
+}
+
+/* Betrags-Spalte (3. Spalte) rechtsbündig + monospace für bessere Lesbarkeit */
+.konto-container table td:nth-child(3),
+.konto-container table th:nth-child(3){
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* Datum (2. Spalte) etwas schmaler */
+.konto-container table td:nth-child(2),
+.konto-container table th:nth-child(2){
+  white-space: nowrap;
+}
+
+/* Kategorie-Badge (wenn im HTML eine <span class="badge">…</span> verwendet wird) */
+.badge{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:.85em;
+  background:#eef2ff;
+  border:1px solid #d9defa;
+}
+
+/* Hinweise/Alerts */
+.notice{
+  color:#0b4f1f;
+  background:#eaf7ef;
+  border:1px solid #cde9d9;
+  border-radius:8px;
+  padding:10px 12px;
+}
+.alert{
+  color:#7a1010;
+  background:#fff1f1;
+  border:1px solid #f1c7c7;
+  border-radius:8px;
+  padding:10px 12px;
+}
+
+/* Buttons & Links */
+.konto-container a.button,
+.konto-container button{
+  display:inline-block;
+  background: var(--primary);
+  color:#fff;
+  padding:9px 14px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+  text-decoration:none;
+  font-weight:600;
+}
+.konto-container a.button:hover,
+.konto-container button:hover{
+  background: var(--primary-strong);
+}
+
+/* Formulare */
+.konto-container label{display:inline-block;margin:8px 0 6px;}
+.konto-container input[type="file"],
+.konto-container input[type="text"],
+.konto-container select{
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:#fff;
+}
+.konto-container form .actions{margin-top:12px}
+
+/* Utilities */
+.muted{color:var(--muted)}
+.mt-16{margin-top:16px}
+.mt-20{margin-top:20px}
+
+/* Druck (nur das Wesentliche) */
+@media print{
+  .konto-container{box-shadow:none;border:none}
+  .konto-container a.button, .konto-container button{display:none}
+}
+
+
+
+
+
+
+.modern-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-size: 14px;
+}
+.modern-table th, .modern-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+.modern-table tr:nth-child(even) {background-color: #f9f9f9;}
+.modern-table tr:hover {background-color: #f1f1f1;}
+.modern-table th {
+  background-color: #4CAF50;
+  color: white;
+  text-align: left;
+}

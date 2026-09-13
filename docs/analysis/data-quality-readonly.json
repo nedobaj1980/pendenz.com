@@ -1,0 +1,50 @@
+{
+  "pendenzen_project_integrity": [
+    {
+      "null_project": "9",
+      "missing_parent": "0"
+    }
+  ],
+  "project4_units": [
+    {
+      "n": "17"
+    }
+  ],
+  "public_flags": [
+    {
+      "public_enabled": "1",
+      "external_can_view": "1",
+      "external_can_upload": "1",
+      "n": "111"
+    }
+  ],
+  "accounting_mapping": [
+    {
+      "n": "265",
+      "no_project": "265",
+      "no_property": "0",
+      "no_unit": "265"
+    }
+  ],
+  "root_prefixes": [
+    {
+      "n": "12"
+    }
+  ],
+  "mandant_assignments": [
+    {
+      "n": "111"
+    }
+  ],
+  "role_old_calls": [
+    {
+      "n": "0"
+    }
+  ],
+  "db_identity": [
+    {
+      "version": "10.4.32-MariaDB",
+      "sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION"
+    }
+  ]
+}

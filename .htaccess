@@ -1,0 +1,37 @@
+# C:\xampp\htdocs\pendenz.com\.htaccess
+Options -Indexes
+
+# Global PHP Session Configuration
+<IfModule mod_php.c>
+  php_value session.name PENDENZ_SESSID
+  php_value session.cookie_path /
+</IfModule>
+
+<IfModule mod_php7.c>
+  php_value session.name PENDENZ_SESSID
+  php_value session.cookie_path /
+</IfModule>
+
+<IfModule mod_php8.c>
+  php_value session.name PENDENZ_SESSID
+  php_value session.cookie_path /
+</IfModule>
+
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /pendenz.com/
+
+  # Statische Dateien/Ordner direkt ausliefern
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # (Optional) Frontcontroller
+  # RewriteRule ^ index.php [L]
+</IfModule>
+
+# MIME
+AddType text/css .css
+AddType application/javascript .js .mjs
+AddType image/x-icon .ico
