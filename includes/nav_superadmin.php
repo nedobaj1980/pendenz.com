@@ -1025,10 +1025,21 @@ if (isset($mysqli)) {
                     <li><a href="<?= e(url('pages/projekt_dashboard.php?id=' . $np['id'])) ?>">📊 Dashboard</a></li>
                     <li><a href="<?= e(url('pages/mieterspiegel.php?projekt_id=' . $np['id'])) ?>">📈 Mieterspiegel</a></li>
                     <li><a href="<?= e(url('tools/mietkontrolle/index.php?projekt_id=' . $np['id'])) ?>">💰 Mietkontrolle</a></li>
+                    <li><a href="<?= e(url('tools/liegenschaftsabrechnung/index.php?projekt_id=' . $np['id'])) ?>">📑 Liegenschaftsabrechnung</a></li>
+                    <li><a href="<?= e(url('pages/files.php?projekt_id=' . $np['id'])) ?>">📁 Drive-Dateien</a></li>
                     <li><a href="<?= e(url('pages/pendenzen.php?projekt_id=' . $np['id'])) ?>">📋 Pendenzen</a></li>
                   </ul>
                 </li>
             <?php endforeach; ?>
+          </ul>
+        </li>
+
+        <li class="has-submenu <?= ($is_active('files.php') || $is_active('ordner_vorlagen.php') || $is_active('ordner_verknuepfen.php')) ? 'active' : '' ?>">
+          <a href="<?= e(url('pages/files.php')) ?>">📁 <span class="nav-text">Ablage &amp; Drive</span></a>
+          <ul class="submenu">
+            <li><a href="<?= e(url('pages/files.php')) ?>">📁 Google Drive Explorer</a></li>
+            <li><a href="<?= e(url('pages/ordner_vorlagen.php')) ?>">📦 Ordner-Vorlagen Designer</a></li>
+            <li><a href="<?= e(url('pages/ordner_verknuepfen.php')) ?>">🔗 Ordner-Verknüpfungen</a></li>
           </ul>
         </li>
 

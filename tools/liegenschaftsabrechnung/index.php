@@ -14,6 +14,7 @@ require_once __DIR__ . '/../../config.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/authz.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/fs.php';
 if (file_exists(__DIR__ . '/../../includes/csrf.php')) {
     require_once __DIR__ . '/../../includes/csrf.php';
 }
@@ -483,6 +484,77 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     }
     fclose($out);
     exit;
+}
+
+// -------------------------------------------------------------
+// POST: Direkt auf Google Drive sichern
+// -------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_to_drive') {
+    $root = project_root_path($mysqli, $pid);
+    if (!$root || !is_dir($root)) {
+        $flash = "❌ Google Drive Pfad für diese Liegenschaft wurde nicht gefunden.";
+        $flashType = "danger";
+    } else {
+        $targetDir = $root . DIRECTORY_SEPARATOR . '06_Bank_Liegenschaftskonto';
+        if (!is_dir($targetDir)) {
+            $targetDir = $root;
+        }
+        $safeProj = preg_replace('/[^a-zA-Z0-9_-]/', '_', $aktProjekt['name'] ?? 'Liegenschaft');
+        $csvFileName = "Liegenschaftsabrechnung_{$safeProj}_{$selYear}_" . date('Ymd_His') . ".csv";
+        $destPath = $targetDir . DIRECTORY_SEPARATOR . $csvFileName;
+
+        $fp = fopen($destPath, 'w');
+        if ($fp) {
+            fwrite($fp, "\xEF\xBB\xBF");
+            fputcsv($fp, ['LIEGENSCHAFTSABRECHNUNG', $aktProjekt['name'] ?? 'Liegenschaft #'.$pid, 'JAHR: ' . $selYear], ';');
+            fputcsv($fp, ['IBAN', $activeKonto['iban'] ?? 'Keine', 'BANK', $activeKonto['bank'] ?? 'Raiffeisen'], ';');
+            fputcsv($fp, ['ERSTELLT AM', date('d.m.Y H:i:s'), 'BENUTZER', $_SESSION['username'] ?? 'Admin'], ';');
+            fputcsv($fp, [], ';');
+            
+            fputcsv($fp, ['ERFOLGSRECHNUNG / ZUSAMMENFASSUNG', 'BETRAG (CHF)'], ';');
+            fputcsv($fp, ['Total Mietzinseinnahmen & Erträge', number_format($totalErtrag, 2, '.', '')], ';');
+            fputcsv($fp, ['Total Betriebs- & Nebenkosten', number_format(-$totalBetrieb, 2, '.', '')], ';');
+            fputcsv($fp, ['Total Liegenschaftsunterhalt (Werterhaltend)', number_format(-$totalUnterhalt, 2, '.', '')], ';');
+            fputcsv($fp, ['Total Investitionen & Sanierungen', number_format(-$totalInvestition, 2, '.', '')], ';');
+            fputcsv($fp, ['Total Versicherungen & Steuern', number_format(-$totalVersicherungSteuer, 2, '.', '')], ';');
+            fputcsv($fp, ['Total Hypothekarzinsen & Finanz/Verwaltung', number_format(-$totalFinanzAdmin, 2, '.', '')], ';');
+            fputcsv($fp, ['NETTOERTRAG LIEGENSCHAFT (Reingewinn)', number_format($nettoertragLiegenschaft, 2, '.', '')], ';');
+            fputcsv($fp, ['Auszahlungen / Entnahmen Eigentümer', number_format(-$totalAuszahlungEigentuemer, 2, '.', '')], ';');
+            fputcsv($fp, ['Eigentümer-Einlagen', number_format($totalEinlagenEigentuemer, 2, '.', '')], ';');
+            fputcsv($fp, ['ABRECHNUNGSSALDO PERIODE', number_format($saldoAbrechnung, 2, '.', '')], ';');
+            fputcsv($fp, [], ';');
+
+            fputcsv($fp, ['SCHWEIZER STEUERERKLÄRUNG (LIEGENSCHAFTSKOSTEN)', 'BETRAG (CHF)'], ';');
+            fputcsv($fp, ['1. Steuerbare Mietzinseinnahmen', number_format($steuerErtrag, 2, '.', '')], ';');
+            fputcsv($fp, ['2. Abzugsfähiger Liegenschaftsunterhalt (Werterhaltend)', number_format($steuerAbzugLiegenschaft, 2, '.', '')], ';');
+            fputcsv($fp, ['3. Schuldzinsen (Hypothekarzinsen)', number_format($steuerSchuldzinsen, 2, '.', '')], ';');
+            fputcsv($fp, ['4. Steuerlicher Liegenschafts-Reinertrag', number_format($steuerErtrag - $steuerAbzugLiegenschaft, 2, '.', '')], ';');
+            fputcsv($fp, [], ';');
+
+            fputcsv($fp, ['ID', 'Datum', 'Hauptgruppe', 'Unterkategorie', 'Buchungstext', 'Wohnung / Einheit', 'Zahlungsart', 'Betrag (CHF)'], ';');
+            foreach ($buchungen as $b) {
+                $mainKey = $b['matched_main'] ?? 'neutral';
+                $subKey = $b['matched_sub'] ?? 'sonstige';
+                $mainTitle = $gruppen[$mainKey]['title'] ?? $mainKey;
+                $subTitle = $gruppen[$mainKey]['sub'][$subKey]['title'] ?? $subKey;
+                fputcsv($fp, [
+                    $b['id'],
+                    $b['buchungsdatum'],
+                    $mainTitle,
+                    $subTitle,
+                    $b['beschreibung'],
+                    $b['wohnung_name'] ?: ($b['wohnung_label'] ?: '—'),
+                    $b['zahlungsart'] ?: 'Bank',
+                    number_format((float)$b['betrag'], 2, '.', '')
+                ], ';');
+            }
+            fclose($fp);
+            $flash = "☁️ Abrechnung erfolgreich direkt auf Google Drive gespeichert:<br><strong style='font-family:monospace;'>" . htmlspecialchars($destPath) . "</strong>";
+        } else {
+            $flash = "❌ Fehler beim Schreiben auf Google Drive: " . htmlspecialchars($destPath);
+            $flashType = "danger";
+        }
+    }
 }
 
 // -------------------------------------------------------------
@@ -996,6 +1068,13 @@ require_once __DIR__ . '/../../includes/nav_dispatch.php';
     <div class="la-hero-actions no-print">
       <button onclick="window.print()" class="la-btn la-btn-white">🖨️ Abrechnung drucken / PDF</button>
       <a href="?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>&export=csv" class="la-btn la-btn-purple">📥 Excel / CSV Export</a>
+      <form method="post" style="margin:0;display:inline;">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_to_drive">
+        <button type="submit" class="la-btn" style="background:#0284c7; color:#fff; border-color:#0284c7;" title="Speichert diese Abrechnung direkt in den Google Drive Ordner dieser Liegenschaft">
+          ☁️ Auf Drive sichern
+        </button>
+      </form>
       <a href="../konto_verwaltung/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="la-btn la-btn-emerald">💳 Zum Bankkonto</a>
       <a href="../mietkontrolle/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="la-btn la-btn-indigo">💰 Zur Mietkontrolle</a>
     </div>

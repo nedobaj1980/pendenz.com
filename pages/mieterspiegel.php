@@ -110,11 +110,229 @@ if ($absCurrent && is_dir($absCurrent)) {
     }
 }
 
-$message = "";
+// CSV-Export für Banken, Partner & Steueramt
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $projName);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="Mieterspiegel_' . $safeName . '_' . date('Ymd') . '.csv"');
+    echo "\xEF\xBB\xBF"; // UTF-8 BOM für Excel
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['MIETERSPIEGEL', $projName, 'STAND: ' . date('d.m.Y H:i:s')], ';');
+    fputcsv($out, [], ';');
+    fputcsv($out, ['Objekt', 'Einheit', 'Etage', 'Zimmer', 'Fläche (m2)', 'Mieter', 'Netto Ist (CHF)', 'NK Ist (CHF)', 'Brutto Ist (CHF)', 'Netto Soll (CHF)', 'NK Soll (CHF)', 'Status', 'Verfügbar ab'], ';');
+    
+    $expUnits = $mysqli->query("
+        SELECT o.name as obj_name, w.name as w_name, w.etage, w.zimmer, w.flaeche, w.status, w.available_from, 
+               w.mietzins_netto_soll, w.mietzins_nk_soll, wm.mieter_name, wm.mietzins_netto, wm.nk_akonto 
+        FROM wohnungen w 
+        JOIN objekte o ON w.objekt_id = o.id 
+        LEFT JOIN wohnung_mieter wm ON (wm.wohnung_id = w.id AND wm.status = 'aktiv') 
+        WHERE o.projekt_id = $pid 
+        ORDER BY o.name, w.name
+    ");
+    if ($expUnits) {
+        while ($eu = $expUnits->fetch_assoc()) {
+            $bVal = (float)$eu['mietzins_netto'] + (float)$eu['nk_akonto'];
+            fputcsv($out, [
+                $eu['obj_name'],
+                $eu['w_name'],
+                $eu['etage'],
+                $eu['zimmer'],
+                $eu['flaeche'],
+                $eu['mieter_name'] ?: 'Leerstand',
+                number_format((float)$eu['mietzins_netto'], 2, '.', ''),
+                number_format((float)$eu['nk_akonto'], 2, '.', ''),
+                number_format($bVal, 2, '.', ''),
+                number_format((float)$eu['mietzins_netto_soll'], 2, '.', ''),
+                number_format((float)$eu['mietzins_nk_soll'], 2, '.', ''),
+                $eu['mieter_name'] ? 'Vermietet' : 'Frei',
+                $eu['available_from'] ?: 'Sofort'
+            ], ';');
+        }
+    }
+    fclose($out);
+    exit;
+}
 
 // Aktionen (Speichern von Änderungen)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+
+    // Mieterwechsel & Neuzuweisung
+    if ($action === 'assign_tenant') {
+        $wid = (int)($_POST['w_id'] ?? 0);
+        $mieterName = trim($_POST['mieter_name'] ?? '');
+        $uid = (int)($_POST['benutzer_id'] ?? 0);
+        $netto = (float)($_POST['mietzins_netto'] ?? 0);
+        $nk = (float)($_POST['nk_akonto'] ?? 0);
+        $beginn = trim($_POST['beginn'] ?? date('Y-m-d'));
+        $telefon = trim($_POST['telefon'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $archiveOld = isset($_POST['archive_old']) ? (int)$_POST['archive_old'] : 1;
+
+        if ($uid > 0 && empty($mieterName)) {
+            $uRow = $mysqli->query("SELECT name, email, telefon FROM benutzer WHERE id = $uid")->fetch_assoc();
+            if ($uRow) {
+                $mieterName = $uRow['name'];
+                if (empty($email)) $email = $uRow['email'] ?? '';
+                if (empty($telefon)) $telefon = $uRow['telefon'] ?? '';
+            }
+        }
+
+        if ($wid > 0 && !empty($mieterName)) {
+            // 1. Falls alter Mieter vorhanden und archivieren gewählt:
+            if ($archiveOld) {
+                $yesterday = date('Y-m-d', strtotime($beginn . ' -1 day'));
+                $mysqli->query("UPDATE wohnung_mieter SET status = 'historisch', enddatum = '$yesterday' WHERE wohnung_id = $wid AND status = 'aktiv'");
+            }
+
+            // 2. Neuen Mieter in wohnung_mieter einfügen
+            $extraData = json_encode(['telefon' => $telefon, 'email' => $email], JSON_UNESCAPED_UNICODE);
+            $userIdVal = $uid > 0 ? $uid : null;
+            $stmt = $mysqli->prepare("INSERT INTO wohnung_mieter (wohnung_id, benutzer_id, mieter_name, mietzins_netto, nk_akonto, startdatum, status, extra) VALUES (?, ?, ?, ?, ?, ?, 'aktiv', ?)");
+            $stmt->bind_param("iisddss", $wid, $userIdVal, $mieterName, $netto, $nk, $beginn, $extraData);
+            $stmt->execute();
+            $stmt->close();
+
+            // 3. Wohnung auf 'vermietet' setzen
+            $mysqli->query("UPDATE wohnungen SET status = 'vermietet' WHERE id = $wid");
+
+            // 4. Mietzins-Historie dokumentieren
+            $mysqli->query("CREATE TABLE IF NOT EXISTS wohnung_mietzins_historie (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                wohnung_id INT NOT NULL,
+                gilt_ab DATE NOT NULL,
+                mietzins_netto DECIMAL(10,2) NOT NULL,
+                mietzins_nk DECIMAL(10,2) NOT NULL,
+                typ VARCHAR(50) NOT NULL,
+                bemerkung TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )");
+            $stmtH = $mysqli->prepare("INSERT INTO wohnung_mietzins_historie (wohnung_id, gilt_ab, mietzins_netto, mietzins_nk, typ, bemerkung) VALUES (?, ?, ?, ?, 'wechsel', ?)");
+            $bem = "Mieterwechsel: " . $mieterName;
+            $stmtH->bind_param("isdds", $wid, $beginn, $netto, $nk, $bem);
+            $stmtH->execute();
+            $stmtH->close();
+
+            // 5. Drive-Ordner synchronisieren
+            require_once __DIR__ . '/../includes/fs.php';
+            ensure_unit_folder($mysqli, $wid);
+
+            $message = "✅ Mieter '<strong>" . htmlspecialchars($mieterName) . "</strong>' wurde erfolgreich eingetragen (Einzug per " . date('d.m.Y', strtotime($beginn)) . ").<br>
+            <div style='margin-top:8px; display:flex; gap:10px;'>
+                <a href='vertrag_gen.php?projekt_id=$pid&unit_id=$wid' class='btn btn-sm btn-blue' style='font-size:12px;'>📜 Mietvertrag generieren</a>
+                <a href='wohnungsabnahme_protokoll.php?projekt_id=$pid&unit_id=$wid' class='btn btn-sm' style='background:#10b981; color:#fff; font-size:12px;'>🔑 Abnahmeprotokoll erstellen</a>
+            </div>";
+        } else {
+            $error = "❌ Bitte geben Sie den Namen des Mieters an.";
+        }
+    }
+
+    // Mieter ausziehen lassen (In Historie verschieben)
+    if ($action === 'move_to_history') {
+        $pvId = (int)($_POST['pv_id'] ?? 0);
+        $wid = (int)($_POST['w_id'] ?? 0);
+        $auszugDatum = trim($_POST['auszug_datum'] ?? date('Y-m-d'));
+
+        if ($pvId > 0) {
+            $mysqli->query("UPDATE wohnung_mieter SET status = 'historisch', enddatum = '$auszugDatum' WHERE id = $pvId");
+            $wRow = $mysqli->query("SELECT wohnung_id FROM wohnung_mieter WHERE id = $pvId")->fetch_assoc();
+            if ($wRow) $wid = (int)$wRow['wohnung_id'];
+        } elseif ($wid > 0) {
+            $mysqli->query("UPDATE wohnung_mieter SET status = 'historisch', enddatum = '$auszugDatum' WHERE wohnung_id = $wid AND status = 'aktiv'");
+        }
+
+        if ($wid > 0) {
+            $mysqli->query("UPDATE wohnungen SET status = 'frei' WHERE id = $wid");
+            $message = "✅ Mieter wurde in die Historie (Vormieter) verschoben. Die Einheit ist nun als leerstehend markiert.<br>
+            <div style='margin-top:8px;'>
+                <a href='wohnungsabnahme_protokoll.php?projekt_id=$pid&unit_id=$wid' class='btn btn-sm' style='background:#7c3aed; color:#fff; font-size:12px;'>🔑 Abnahmeprotokoll (Auszug) durchführen</a>
+            </div>";
+        }
+    }
+
+    // Mietpreis anpassen
+    if ($action === 'adjust_rent') {
+        $wid = (int)($_POST['w_id'] ?? 0);
+        $nettoNeu = (float)($_POST['netto_neu'] ?? 0);
+        $nkNeu = (float)($_POST['nk_neu'] ?? 0);
+        $giltAb = trim($_POST['gilt_ab'] ?? date('Y-m-d'));
+        $grund = trim($_POST['grund'] ?? 'Mietzinsanpassung');
+
+        if ($wid > 0 && $nettoNeu > 0) {
+            $mysqli->query("CREATE TABLE IF NOT EXISTS wohnung_mietzins_historie (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                wohnung_id INT NOT NULL,
+                gilt_ab DATE NOT NULL,
+                mietzins_netto DECIMAL(10,2) NOT NULL,
+                mietzins_nk DECIMAL(10,2) NOT NULL,
+                typ VARCHAR(50) NOT NULL,
+                bemerkung TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )");
+            $stmt = $mysqli->prepare("INSERT INTO wohnung_mietzins_historie (wohnung_id, gilt_ab, mietzins_netto, mietzins_nk, typ, bemerkung) VALUES (?, ?, ?, ?, 'anpassung', ?)");
+            $stmt->bind_param("isdds", $wid, $giltAb, $nettoNeu, $nkNeu, $grund);
+            $stmt->execute();
+            $stmt->close();
+
+            $mysqli->query("UPDATE wohnung_mieter SET mietzins_netto = $nettoNeu, nk_akonto = $nkNeu WHERE wohnung_id = $wid AND status = 'aktiv'");
+            $mysqli->query("UPDATE wohnungen SET mietzins_netto_soll = $nettoNeu, mietzins_nk_soll = $nkNeu WHERE id = $wid");
+
+            $message = "✅ Mietpreis erfolgreich per " . date('d.m.Y', strtotime($giltAb)) . " angepasst (Netto: CHF " . number_format($nettoNeu, 2, '.', "'") . ", NK: CHF " . number_format($nkNeu, 2, '.', "'") . ").";
+        }
+    }
+
+    // Mieterspiegel direkt auf Google Drive sichern
+    if ($action === 'save_spiegel_to_drive') {
+        require_once __DIR__ . '/../includes/fs.php';
+        $root = project_root_path($mysqli, $pid);
+        if (!$root || !is_dir($root)) {
+            $error = "❌ Google Drive Pfad für dieses Projekt nicht erreichbar.";
+        } else {
+            $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $projName);
+            $fileName = "Mieterspiegel_{$safeName}_" . date('Ymd_His') . ".csv";
+            $dest = $root . DIRECTORY_SEPARATOR . $fileName;
+            $fp = fopen($dest, 'w');
+            if ($fp) {
+                fwrite($fp, "\xEF\xBB\xBF");
+                fputcsv($fp, ['MIETERSPIEGEL', $projName, 'STAND: ' . date('d.m.Y H:i:s')], ';');
+                fputcsv($fp, [], ';');
+                fputcsv($fp, ['Objekt', 'Einheit', 'Etage', 'Zimmer', 'Fläche (m2)', 'Mieter', 'Netto Ist (CHF)', 'NK Ist (CHF)', 'Brutto Ist (CHF)', 'Netto Soll (CHF)', 'NK Soll (CHF)', 'Status', 'Verfügbar ab'], ';');
+                
+                $expUnits = $mysqli->query("
+                    SELECT o.name as obj_name, w.name as w_name, w.etage, w.zimmer, w.flaeche, w.status, w.available_from, 
+                           w.mietzins_netto_soll, w.mietzins_nk_soll, wm.mieter_name, wm.mietzins_netto, wm.nk_akonto 
+                    FROM wohnungen w 
+                    JOIN objekte o ON w.objekt_id = o.id 
+                    LEFT JOIN wohnung_mieter wm ON (wm.wohnung_id = w.id AND wm.status = 'aktiv') 
+                    WHERE o.projekt_id = $pid 
+                    ORDER BY o.name, w.name
+                ");
+                if ($expUnits) {
+                    while ($eu = $expUnits->fetch_assoc()) {
+                        $bVal = (float)$eu['mietzins_netto'] + (float)$eu['nk_akonto'];
+                        fputcsv($fp, [
+                            $eu['obj_name'],
+                            $eu['w_name'],
+                            $eu['etage'],
+                            $eu['zimmer'],
+                            $eu['flaeche'],
+                            $eu['mieter_name'] ?: 'Leerstand',
+                            number_format((float)$eu['mietzins_netto'], 2, '.', ''),
+                            number_format((float)$eu['nk_akonto'], 2, '.', ''),
+                            number_format($bVal, 2, '.', ''),
+                            number_format((float)$eu['mietzins_netto_soll'], 2, '.', ''),
+                            number_format((float)$eu['mietzins_nk_soll'], 2, '.', ''),
+                            $eu['mieter_name'] ? 'Vermietet' : 'Frei',
+                            $eu['available_from'] ?: 'Sofort'
+                        ], ';');
+                    }
+                }
+                fclose($fp);
+                $message = "☁️ Mieterspiegel erfolgreich direkt auf Google Drive abgelegt:<br><strong style='font-family:monospace;'>" . htmlspecialchars($dest) . "</strong>";
+            }
+        }
+    }
 
     if ($action === 'add_unit') {
         $name = trim($_POST['name'] ?? '');
@@ -285,112 +503,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($action === 'assign_tenant') {
-        $wid = (int)($_POST['w_id'] ?? 0);
-        $benutzer_id = (int)($_POST['benutzer_id'] ?? 0);
-        $netto = (float)($_POST['mietzins_netto'] ?? 0);
-        $nk = (float)($_POST['nk_akonto'] ?? 0);
-        $rawBeginn = $_POST['beginn'] ?? date('Y-m-d');
-        $beginn = date('Y-m-d', strtotime($rawBeginn) ?: time());
-        
-        if ($wid > 0 && $benutzer_id > 0) {
-            $stmtHist = $mysqli->prepare("UPDATE wohnung_mieter SET status = 'historisch', enddatum = ? WHERE wohnung_id = ? AND status = 'aktiv'");
-            $stmtHist->bind_param("si", $beginn, $wid);
-            $stmtHist->execute();
-            $stmtHist->close();
-            
-            $wRes = $mysqli->query("SELECT w.folder_name, o.name as obj_name FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id WHERE w.id = $wid");
-            $wData = $wRes->fetch_assoc();
-            $uNameRes = $mysqli->query("SELECT name FROM benutzer WHERE id = $benutzer_id");
-            $userName = $uNameRes->fetch_assoc()['name'] ?? "Mieter_$benutzer_id";
-            $safeUserName = str_replace(['/', '\\', ',', '.', ' '], '_', $userName);
-            
-            $mieterFolder = "Mieter_" . $safeUserName;
-            
-            // Korrigierter Pfad für Wohnungen
-            $objPart = $wData['obj_name'] ? ($wData['obj_name'] . "/Wohnungen/") : "Wohnungen/";
-            $relMieterPath = $unitsSubPath . "/" . $objPart . $wData['folder_name'] . "/" . $mieterFolder;
-            $absMieter = fs_abs_from_rel($relBase, $relMieterPath);
-
-            // 1. Suche Ordner im Pool (Interessenten)
-            $root = project_root_path($mysqli, $pid);
-            $poolFolderFound = "";
-            if ($root) {
-                $poolDir = $root . DIRECTORY_SEPARATOR . '00_Pool' . DIRECTORY_SEPARATOR . 'Interessenten';
-                if (is_dir($poolDir)) {
-                    $items = @scandir($poolDir);
-                    if ($items) {
-                        foreach($items as $item) {
-                            if (strpos($item, "_" . $benutzer_id) !== false) {
-                                $poolFolderFound = $item;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if ($absMieter) {
-                if (!is_dir(dirname($absMieter))) @mkdir(dirname($absMieter), 0777, true);
-                
-                if ($poolFolderFound) {
-                    $srcPool = $poolDir . DIRECTORY_SEPARATOR . $poolFolderFound;
-                    @rename($srcPool, $absMieter); // Verschiebe Pool-Ordner zur Wohnung
-                } elseif (!is_dir($absMieter)) {
-                    @mkdir($absMieter, 0777, true); // Neuer Ordner falls kein Pool-Ordner da
-                }
-            }
-            
-            // 2. Benutzer-Phasen Update
-            $mysqli->query("UPDATE benutzer SET mieter_phase = 'mieter' WHERE id = $benutzer_id");
-
-            $qi = $mysqli->prepare("INSERT INTO wohnung_mieter (wohnung_id, benutzer_id, mieter_name, mietzins_netto, nk_akonto, rolle, startdatum, status) 
-                                    VALUES (?, ?, ?, ?, ?, 'mieter', ?, 'aktiv')");
-            $qi->bind_param("iisdds", $wid, $benutzer_id, $userName, $netto, $nk, $beginn);
-            if ($qi->execute()) {
-                $message = "✅ Mieter '$userName' erfolgreich zugewiesen und Ordner verschoben.";
-            } else {
-                $message = "❌ Fehler bei Zuweisung: " . $qi->error;
-            }
-        }
-    }
-
-    if ($action === 'move_to_history') {
-        $wmid = (int)($_POST['pv_id'] ?? 0); // Behalte param name zur Kompabilität
-        $q = $mysqli->query("SELECT wm.*, w.folder_name, o.name as obj_name FROM wohnung_mieter wm JOIN wohnungen w ON wm.wohnung_id = w.id JOIN objekte o ON w.objekt_id = o.id WHERE wm.id = $wmid");
-        if ($wm = $q->fetch_assoc()) {
-            // Wir suchen den absoluten Pfad der Wohnung, um den Mieterordner zu finden
-            $absUnit = fs_abs_from_rel($relBase, $unitsSubPath . "/" . $wm['obj_name'] . "/Wohnungen/" . $wm['folder_name']);
-            
-            // Suche den Ordner des Mieters (fängt mit Mieter_ an)
-            $mFolder = "";
-            $items = @scandir($absUnit);
-            if ($items) {
-                foreach($items as $item) {
-                    if (strpos($item, 'Mieter_') === 0) {
-                        $mFolder = $item;
-                        break;
-                    }
-                }
-            }
-
-            if ($mFolder) {
-                $srcAbs = $absUnit . DIRECTORY_SEPARATOR . $mFolder;
-                $destRel = $unitsSubPath . "/" . $wm['obj_name'] . "/Wohnungen/" . $wm['folder_name'] . "/Vormieter/" . $mFolder . "_bis_" . date('Y-m-d');
-                $destAbs = fs_abs_from_rel($relBase, $destRel);
-                
-                if (!is_dir(dirname($destAbs))) @mkdir(dirname($destAbs), 0777, true);
-                if (@rename($srcAbs, $destAbs)) {
-                    $mysqli->query("UPDATE wohnung_mieter SET status = 'historisch', enddatum = CURRENT_DATE WHERE id = $wmid");
-                    $message = "📦 Mieter erfolgreich in Historie verschoben und Ordner archiviert.";
-                }
-            } else {
-                // Nur DB Status ändern falls kein Ordner gefunden
-                $mysqli->query("UPDATE wohnung_mieter SET status = 'historisch', enddatum = CURRENT_DATE WHERE id = $wmid");
-                $message = "📦 Mieter-Status auf historisch gesetzt (kein physischer Ordner gefunden).";
-            }
-        }
-    }
+    // Hinweis: Die Aktionen 'assign_tenant' und 'move_to_history' werden oben vollständig und vereinheitlicht ausgeführt.
 
     if ($action === 'create_missing_folders') {
         $res = $mysqli->query("SELECT w.*, o.name as obj_name FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id WHERE o.projekt_id = $pid");
@@ -890,16 +1003,23 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
                 </select>
             </div>
         </div>
-        <div style="display:flex; gap:10px;">
-            <button class="btn btn-blue" onclick="document.getElementById('addUnitModal').style.display='block'" style="background: #10b981; border:none;">➕ Neue Einheit</button>
-            <button class="btn btn-blue" onclick="saveAllChanges()">💾 Speichern</button>
-            <form method="POST" style="margin:0;">
-                <input type="hidden" name="action" value="sync_fs">
-                <button type="submit" class="btn btn-outline" title="Prüft ob alle Ordner auf Drive existieren und legt fehlende an">🔄 Drive-Sync</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <button type="button" class="btn btn-blue" onclick="document.getElementById('addUnitModal').style.display='block'" style="background: #10b981; border:none; padding:8px 16px;">➕ Neue Einheit</button>
+            <button type="button" class="btn btn-blue" onclick="saveAllChanges()" style="padding:8px 16px;">💾 Speichern</button>
+            <a href="?projekt_id=<?= $pid ?>&export=csv" class="btn btn-outline" style="border-color:#0284c7; color:#0284c7; font-weight:700; padding:8px 14px;" title="Mieterspiegel als CSV exportieren">📥 CSV-Export</a>
+            <form method="POST" style="margin:0; display:inline;">
+                <input type="hidden" name="action" value="save_spiegel_to_drive">
+                <button type="submit" class="btn btn-outline" style="border-color:#2563eb; color:#2563eb; font-weight:700; padding:8px 14px;" title="Mieterspiegel direkt im Google Drive Ordner dieser Liegenschaft ablegen">☁️ Auf Drive sichern</button>
             </form>
-            <button class="btn btn-outline" onclick="window.print()">🖨️ Export</button>
-            <a href="<?= e(url('tools/mietkontrolle/index.php?projekt_id=' . $pid)) ?>" class="btn btn-outline" style="border-color:#10b981; color:#059669; font-weight:700;">💰 Mietkontrolle</a>
-            <a href="projekt_dashboard.php?id=<?= $pid ?>" class="btn btn-outline">🏠 Dashboard</a>
+            <form method="POST" style="margin:0; display:inline;">
+                <input type="hidden" name="action" value="sync_fs">
+                <button type="submit" class="btn btn-outline" style="padding:8px 14px;" title="Prüft ob alle Ordner auf Drive existieren und legt fehlende an">🔄 Drive-Sync</button>
+            </form>
+            <button type="button" class="btn btn-outline" onclick="window.print()" style="padding:8px 14px;">🖨️ Drucken</button>
+            <a href="files.php?projekt_id=<?= $pid ?>" class="btn btn-outline" style="border-color:#6366f1; color:#4f46e5; font-weight:700; padding:8px 14px;">📁 Drive-Dateien</a>
+            <a href="<?= e(url('tools/liegenschaftsabrechnung/index.php?projekt_id=' . $pid)) ?>" class="btn btn-outline" style="border-color:#d97706; color:#b45309; font-weight:700; padding:8px 14px;">📑 Abrechnung</a>
+            <a href="<?= e(url('tools/mietkontrolle/index.php?projekt_id=' . $pid)) ?>" class="btn btn-outline" style="border-color:#10b981; color:#059669; font-weight:700; padding:8px 14px;">💰 Mietkontrolle</a>
+            <a href="projekt_dashboard.php?id=<?= $pid ?>" class="btn btn-outline" style="padding:8px 14px;">🏠 Dashboard</a>
         </div>
     </div>
 
@@ -1161,6 +1281,11 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
                                         title="<?= $iconTitle ?>" 
                                         onclick="openTenantModal(<?= $u['w_id'] ?>)">👤</button>
                                 
+                                <button type="button" class="btn-icon" 
+                                        style="color:#0284c7; border-color:#0284c744; background:#0284c711;" 
+                                        title="Mietpreis anpassen" 
+                                        onclick="openRentModal(<?= $u['w_id'] ?>)">💰</button>
+                                
                                 <button type="button" class="btn-icon" title="Anfrage-Link kopieren" onclick="copyLink(<?= $u['w_id'] ?>)">🔗</button>
 
                                 <a href="abnahme.php?projekt_id=<?= $pid ?>&unit_id=<?= $u['w_id'] ?>" class="btn-icon" title="Protokoll / Abnahme">📝</a>
@@ -1393,30 +1518,61 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
 </div>
 
 <div id="tenantModal" class="modal">
-    <div class="modal-content" style="max-width:500px;">
+    <div class="modal-content" style="max-width:560px;">
         <span class="close" onclick="closeTenantModal()">&times;</span>
-        <h2 id="modalTitle">👤 Mieter verwalten</h2>
-        <div id="unitInfo" style="margin-bottom:15px; border-bottom:1px solid #eef2f7; padding-bottom:10px;"></div>
+        <h2 id="modalTitle" style="margin:0 0 10px 0; font-size:20px;">👤 Mieter & Mietverhältnis</h2>
+        <div id="unitInfo" style="margin-bottom:15px; border-bottom:1px solid #e2e8f0; padding-bottom:10px;"></div>
 
-        <div id="currentTenantDiv" style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:15px; display:none; border-left:4px solid #10b981;">
-            <h4 style="margin:0 0 5px 0; font-size:11px; text-transform:uppercase; color:#64748b;">Aktueller Mieter record:</h4>
-            <div id="currentTenantName" style="font-weight:700; font-size:16px;"></div>
-            <div id="currentTenantDates" style="font-size:12px; color:#64748b; margin-top:2px;"></div>
-            <form method="POST" style="margin-top:10px;">
+        <!-- Aktiver Mieter (falls vermietet) -->
+        <div id="currentTenantDiv" style="background:#f8fafc; padding:16px; border-radius:12px; margin-bottom:20px; display:none; border:1px solid #e2e8f0; border-left:4px solid #10b981;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                    <span style="font-size:10px; font-weight:800; text-transform:uppercase; color:#059669; letter-spacing:0.05em;">Aktiver Mieter</span>
+                    <div id="currentTenantName" style="font-weight:800; font-size:17px; color:#1e293b; margin-top:2px;"></div>
+                    <div id="currentTenantDates" style="font-size:12px; color:#64748b; margin-top:2px;"></div>
+                </div>
+                <div id="currentTenantRent" style="text-align:right;">
+                    <div style="font-size:11px; color:#64748b; font-weight:600;">Aktueller Mietzins</div>
+                    <div id="currentTenantRentVal" style="font-size:15px; font-weight:800; color:#1e293b;"></div>
+                </div>
+            </div>
+
+            <!-- Schnellaktionen für aktiven Mieter -->
+            <div style="display:flex; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid #e2e8f0; flex-wrap:wrap;">
+                <a id="btnTenantVertrag" href="#" class="btn btn-sm" style="background:#3b82f6; color:#fff; text-decoration:none; font-size:12px; font-weight:700; border-radius:8px; padding:6px 12px;">📜 Mietvertrag</a>
+                <a id="btnTenantAbnahme" href="#" class="btn btn-sm" style="background:#10b981; color:#fff; text-decoration:none; font-size:12px; font-weight:700; border-radius:8px; padding:6px 12px;">🔑 Abnahmeprotokoll</a>
+                <button type="button" class="btn btn-sm" style="background:#0284c7; color:#fff; font-size:12px; font-weight:700; border-radius:8px; padding:6px 12px;" onclick="switchToRentFromTenant()">💰 Mietpreis ändern</button>
+            </div>
+
+            <!-- Auszug-Formular -->
+            <form method="POST" style="margin-top:12px; padding-top:12px; border-top:1px dashed #cbd5e1; display:flex; align-items:center; justify-content:space-between; gap:10px;">
                 <input type="hidden" name="action" value="move_to_history">
                 <input type="hidden" name="pv_id" id="modal_pv_id">
-                <button type="submit" class="btn" style="background:#ef4444; font-size:12px; padding:6px 12px;">📦 In Historie verschieben (Auszug)</button>
+                <input type="hidden" name="w_id" id="modal_w_id_move">
+                <div style="flex:1;">
+                    <label style="display:block; font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Auszugsdatum</label>
+                    <input type="date" name="auszug_datum" value="<?= date('Y-m-d') ?>" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; width:100%;">
+                </div>
+                <button type="submit" class="btn" style="background:#ef4444; color:#fff; font-size:12px; padding:8px 14px; font-weight:700; margin-top:15px; border-radius:8px;" onclick="return confirm('Möchten Sie diesen Mieter wirklich in die Historie verschieben und die Einheit auf frei setzen?')">📦 Auszug (In Historie)</button>
             </form>
         </div>
 
+        <!-- Neuer Mieter / Mieterwechsel -->
+        <h3 id="assignTitle" style="margin:0 0 12px 0; font-size:14px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.05em;">➕ Neuer Mieter / Mieterwechsel</h3>
+        
         <form method="POST">
             <input type="hidden" name="action" value="assign_tenant">
             <input type="hidden" name="w_id" id="modal_w_id">
             
             <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:#64748b; margin-bottom:4px;">Neuen Mieter zuweisen</label>
-                <select name="benutzer_id" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit;">
-                    <option value="">-- Mieter wählen --</option>
+                <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:#64748b; margin-bottom:4px;">Mieter-Name <span style="color:#ef4444;">*</span></label>
+                <input type="text" name="mieter_name" id="modal_input_mieter_name" required placeholder="z.B. Familie Müller oder Vor- & Nachname" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit; font-size:14px;">
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; color:#64748b; margin-bottom:4px;">Verknüpfter System-Benutzer (optional)</label>
+                <select name="benutzer_id" id="modal_select_user" onchange="onUserSelectChanged(this)" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit; font-size:13px;">
+                    <option value="">-- Keiner / Externer Mieter ohne Portal-Konto --</option>
                     <?php foreach($allUsers as $usr): ?>
                         <option value="<?= $usr['id'] ?>"><?= htmlspecialchars($usr['name']) ?></option>
                     <?php endforeach; ?>
@@ -1425,21 +1581,78 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
-                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Netto (CHF)</label>
-                    <input type="number" step="0.05" name="mietzins_netto" id="modal_netto" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Telefon (optional)</label>
+                    <input type="text" name="telefon" id="modal_telefon" placeholder="+41 79 123 45 67" style="width:100%; padding:9px; border-radius:8px; border:1px solid #cbd5e1; font-size:13px;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">NK (CHF)</label>
-                    <input type="number" step="0.05" name="nk_akonto" id="modal_nk" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">E-Mail (optional)</label>
+                    <input type="email" name="email" id="modal_email" placeholder="mieter@beispiel.ch" style="width:100%; padding:9px; border-radius:8px; border:1px solid #cbd5e1; font-size:13px;">
                 </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Netto-Mietzins (CHF) <span style="color:#ef4444;">*</span></label>
+                    <input type="number" step="0.05" name="mietzins_netto" id="modal_netto" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:14px; font-weight:700;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">NK-Akonto (CHF) <span style="color:#ef4444;">*</span></label>
+                    <input type="number" step="0.05" name="nk_akonto" id="modal_nk" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:14px; font-weight:700;">
+                </div>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Mietbeginn (Einzug)</label>
+                <input type="date" name="beginn" value="<?= date('Y-m-d') ?>" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:14px;">
+            </div>
+
+            <label id="archiveOldWrap" style="display:flex; align-items:center; gap:8px; font-size:12px; color:#475569; margin-bottom:20px; cursor:pointer;">
+                <input type="checkbox" name="archive_old" value="1" checked style="width:16px; height:16px;">
+                Bestehenden aktiven Mieter automatisch ins Vormieter-Archiv übertragen
+            </label>
+
+            <button type="submit" class="btn btn-blue" style="width:100%; padding:13px; font-weight:800; font-size:15px; border-radius:10px;">✅ Mieter zuweisen & Drive-Ordner erstellen</button>
+        </form>
+    </div>
+</div>
+
+<!-- Schnelle Mietpreis-Anpassung Modal -->
+<div id="rentModal" class="modal">
+    <div class="modal-content" style="max-width:480px;">
+        <span class="close" onclick="closeRentModal()">&times;</span>
+        <h2 style="margin:0 0 8px 0; font-size:20px;">💰 Mietpreis anpassen</h2>
+        <div id="rentUnitInfo" style="margin-bottom:15px; border-bottom:1px solid #e2e8f0; padding-bottom:10px; color:#64748b; font-size:13px;"></div>
+
+        <form method="POST">
+            <input type="hidden" name="action" value="adjust_rent">
+            <input type="hidden" name="w_id" id="rent_modal_w_id">
+
+            <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px; margin-bottom:15px; font-size:12px; color:#0369a1;">
+                <strong>Bisheriger Mietzins:</strong> <span id="rent_current_info">-</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Neuer Netto (CHF) <span style="color:#ef4444;">*</span></label>
+                    <input type="number" step="0.05" name="netto_neu" id="rent_modal_netto" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:15px; font-weight:800;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Neue NK (CHF) <span style="color:#ef4444;">*</span></label>
+                    <input type="number" step="0.05" name="nk_neu" id="rent_modal_nk" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:15px; font-weight:800;">
+                </div>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Gültig ab <span style="color:#ef4444;">*</span></label>
+                <input type="date" name="gilt_ab" value="<?= date('Y-m-d') ?>" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:14px;">
             </div>
 
             <div style="margin-bottom:20px;">
-                <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Einzugsdatum</label>
-                <input type="date" name="beginn" value="<?= date('Y-m-d') ?>" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">Grund / Bemerkung</label>
+                <input type="text" name="grund" placeholder="z.B. Referenzzinssatz, Teuerung, Modernisierung" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:13px;">
             </div>
 
-            <button type="submit" class="btn btn-blue" style="width:100%; padding:12px; font-weight:700;">✅ Einzug abschliessen & Ordner anlegen</button>
+            <button type="submit" class="btn btn-blue" style="width:100%; padding:12px; font-weight:800; font-size:15px; border-radius:10px; background:#0284c7;">💾 Mietpreis jetzt anpassen</button>
         </form>
     </div>
 </div>
@@ -1514,25 +1727,87 @@ function openTenantModal(wid) {
     const unit = unitsArr.find(u => u.w_id == wid);
     if (!unit) return;
     document.getElementById('modal_w_id').value = wid;
-    document.getElementById('modalTitle').innerText = '👤 Mieter verwalten: ' + unit.w_name;
+    const moveWid = document.getElementById('modal_w_id_move');
+    if (moveWid) moveWid.value = wid;
+    document.getElementById('modalTitle').innerText = '👤 Mieter & Mietverhältnis: ' + unit.w_name;
     document.getElementById('unitInfo').innerHTML = `<span class="badge-obj">${unit.obj_name}</span> <span class="badge-unit">${unit.etage} | ${unit.zimmer} Zi.</span>`;
+    
     const curTD = document.getElementById('currentTenantDiv');
+    const btnV = document.getElementById('btnTenantVertrag');
+    const btnA = document.getElementById('btnTenantAbnahme');
+    if (btnV) btnV.href = 'vertrag_gen.php?projekt_id=<?= $pid ?>&unit_id=' + wid;
+    if (btnA) btnA.href = 'wohnungsabnahme_protokoll.php?projekt_id=<?= $pid ?>&unit_id=' + wid;
+
     if (unit.mieter) {
         curTD.style.display = 'block';
         document.getElementById('currentTenantName').innerText = unit.mieter.name;
-        document.getElementById('currentTenantDates').innerText = "Seit: " + unit.mieter.einzug_datum;
-        document.getElementById('modal_pv_id').value = unit.mieter.pv_id; 
+        document.getElementById('currentTenantDates').innerText = "Einzug: " + (unit.mieter.einzug_datum || '-');
+        const nettoVal = parseFloat(unit.mieter.mietzins_netto) || 0;
+        const nkVal = parseFloat(unit.mieter.mietzins_nk) || 0;
+        const bruttoVal = (nettoVal + nkVal).toFixed(2);
+        document.getElementById('currentTenantRentVal').innerText = "CHF " + bruttoVal + " (Netto: " + nettoVal.toFixed(2) + " / NK: " + nkVal.toFixed(2) + ")";
+        document.getElementById('modal_pv_id').value = unit.mieter.pv_id || ''; 
         document.getElementById('modal_netto').value = unit.mieter.mietzins_netto;
         document.getElementById('modal_nk').value = unit.mieter.mietzins_nk;
+        document.getElementById('assignTitle').innerText = "🔄 Mieterwechsel (Nachmieter erfassen)";
+        const archWrap = document.getElementById('archiveOldWrap');
+        if (archWrap) archWrap.style.display = 'flex';
     } else {
         curTD.style.display = 'none';
-        document.getElementById('modal_netto').value = '';
-        document.getElementById('modal_nk').value = '';
+        document.getElementById('modal_netto').value = unit.mietzins_netto_soll || '';
+        document.getElementById('modal_nk').value = unit.mietzins_nk_soll || '';
+        document.getElementById('assignTitle').innerText = "➕ Neuer Mieter erfassen";
+        const archWrap = document.getElementById('archiveOldWrap');
+        if (archWrap) archWrap.style.display = 'none';
     }
+    document.getElementById('modal_input_mieter_name').value = '';
+    document.getElementById('modal_select_user').value = '';
+    document.getElementById('modal_telefon').value = '';
+    document.getElementById('modal_email').value = '';
     document.getElementById('tenantModal').style.display = 'block';
 }
 
 function closeTenantModal() { document.getElementById('tenantModal').style.display = 'none'; }
+
+function openRentModal(wid) {
+    const unit = unitsArr.find(u => u.w_id == wid);
+    if (!unit) return;
+    document.getElementById('rent_modal_w_id').value = wid;
+    document.getElementById('rentUnitInfo').innerHTML = `<strong>${unit.w_name}</strong> (${unit.obj_name} | ${unit.etage} | ${unit.zimmer} Zi.)`;
+    
+    let curNetto = 0, curNk = 0;
+    if (unit.mieter) {
+        curNetto = parseFloat(unit.mieter.mietzins_netto) || 0;
+        curNk = parseFloat(unit.mieter.mietzins_nk) || 0;
+    } else {
+        curNetto = parseFloat(unit.mietzins_netto_soll) || 0;
+        curNk = parseFloat(unit.mietzins_nk_soll) || 0;
+    }
+    const curBrutto = (curNetto + curNk).toFixed(2);
+    document.getElementById('rent_current_info').innerText = `CHF ${curBrutto} (Netto: ${curNetto.toFixed(2)} + NK: ${curNk.toFixed(2)})`;
+    
+    document.getElementById('rent_modal_netto').value = curNetto > 0 ? curNetto : '';
+    document.getElementById('rent_modal_nk').value = curNk > 0 ? curNk : '';
+    document.getElementById('rentModal').style.display = 'block';
+}
+
+function closeRentModal() { document.getElementById('rentModal').style.display = 'none'; }
+
+function switchToRentFromTenant() {
+    const wid = document.getElementById('modal_w_id').value;
+    closeTenantModal();
+    openRentModal(wid);
+}
+
+function onUserSelectChanged(sel) {
+    if (sel.value && sel.selectedOptions.length > 0) {
+        const text = sel.selectedOptions[0].text;
+        const nameInput = document.getElementById('modal_input_mieter_name');
+        if (nameInput && !nameInput.value) {
+            nameInput.value = text;
+        }
+    }
+}
 
 function openInviteModal(wid, wname) {
     document.getElementById('invite_w_id').value = wid;
@@ -1583,9 +1858,11 @@ function copyInviteLink() {
 
 window.onclick = function(event) {
     const tModal = document.getElementById('tenantModal');
+    const rModal = document.getElementById('rentModal');
     const iModal = document.getElementById('inviteModal');
     const dModal = document.getElementById('unitDashboardModal');
     if (event.target == tModal) closeTenantModal();
+    if (event.target == rModal) closeRentModal();
     if (event.target == iModal) closeInviteModal();
     if (event.target == dModal) closeUnitDashboard();
 }

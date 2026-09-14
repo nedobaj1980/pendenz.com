@@ -978,9 +978,20 @@ ob_start();
                                     if (!empty($p['public_token'])) {
                                         $itemUrl = base_url("pages/pendenz_public.php?t=" . $p['public_token']);
                                     }
-                                    $qrUrl = "https://quickchart.io/qr?text=" . urlencode($itemUrl) . "&size=150";
+                                    $qrCacheDir = __DIR__ . '/../uploads/qr_cache';
+                                    if (!is_dir($qrCacheDir)) @mkdir($qrCacheDir, 0777, true);
+                                    $qrFile = $qrCacheDir . '/qr_' . md5($itemUrl) . '.png';
+                                    if (!file_exists($qrFile)) {
+                                        $ctx = stream_context_create(['http' => ['timeout' => 1.5]]);
+                                        $remoteQrUrl = "https://quickchart.io/qr?text=" . urlencode($itemUrl) . "&size=150";
+                                        $imgData = @file_get_contents($remoteQrUrl, false, $ctx);
+                                        if ($imgData) {
+                                            @file_put_contents($qrFile, $imgData);
+                                        }
+                                    }
+                                    $qrSrc = file_exists($qrFile) ? $qrFile : ("https://quickchart.io/qr?text=" . urlencode($itemUrl) . "&size=150");
                                 ?>
-                                <img src="<?= $qrUrl ?>" class="qr-code">
+                                <img src="<?= $qrSrc ?>" class="qr-code">
                                 <a href="<?= $itemUrl ?>" class="pos-link">Details</a>
                             </div>
                         </div>
@@ -1006,4 +1017,65 @@ $dom = new Dompdf($opt);
 $dom->loadHtml($html);
 $dom->setPaper('A4', 'portrait');
 $dom->render();
+
+if (isset($_REQUEST['save_to_drive']) && $_REQUEST['save_to_drive'] == '1') {
+    $pdfOutput = $dom->output();
+    require_once __DIR__ . '/../includes/fs.php';
+
+    // Find project_id
+    $targetPid = (int)($_REQUEST['projekt_id'] ?? 0);
+    if ($targetPid === 0 && !empty($projekt_name)) {
+        $pRow = $mysqli->query("SELECT id FROM projekte WHERE name = '" . $mysqli->real_escape_string($projekt_name) . "' LIMIT 1")->fetch_assoc();
+        if ($pRow) $targetPid = (int)$pRow['id'];
+    }
+    if ($targetPid === 0 && !empty($protocol['project'])) {
+        $pRow = $mysqli->query("SELECT id FROM projekte WHERE name = '" . $mysqli->real_escape_string($protocol['project']) . "' LIMIT 1")->fetch_assoc();
+        if ($pRow) $targetPid = (int)$pRow['id'];
+    }
+
+    $destDir = '';
+    $projTitle = 'Global';
+    if ($targetPid > 0) {
+        $destDir = project_root_path($mysqli, $targetPid);
+        $pRow = $mysqli->query("SELECT name FROM projekte WHERE id = $targetPid LIMIT 1")->fetch_assoc();
+        if ($pRow) $projTitle = $pRow['name'];
+    }
+    if (!$destDir || !is_dir($destDir)) {
+        $driveRoot = 'G:\\Meine Ablage\\Helvetic Immo Treuhand';
+        if (is_dir($driveRoot)) {
+            $destDir = $driveRoot . DIRECTORY_SEPARATOR . '00_Pool';
+            if (!is_dir($destDir)) @mkdir($destDir, 0777, true);
+        } else {
+            $destDir = __DIR__ . '/../uploads/pendenzen';
+            if (!is_dir($destDir)) @mkdir($destDir, 0777, true);
+        }
+    }
+
+    $safeProj = preg_replace('/[^a-zA-Z0-9_-]/', '_', $projTitle);
+    $fileName = "Pendenzenliste_{$safeProj}_" . date('Ymd_His') . ".pdf";
+    $destPath = $destDir . DIRECTORY_SEPARATOR . $fileName;
+
+    $saved = file_put_contents($destPath, $pdfOutput);
+
+    // Also register in fs_nodes if targetPid > 0
+    if ($targetPid > 0 && function_exists('fs_scan_project')) {
+        fs_scan_project($mysqli, $targetPid);
+    }
+
+    if ((isset($_REQUEST['format']) && $_REQUEST['format'] === 'json') || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => $saved !== false,
+            'filename' => $fileName,
+            'path' => $destPath,
+            'size' => strlen($pdfOutput)
+        ]);
+        exit;
+    } else {
+        header('X-Saved-To-Drive: ' . rawurlencode($destPath));
+        $dom->stream($fileName, ["Attachment" => false]);
+        exit;
+    }
+}
+
 $dom->stream("pendenzenliste_" . date('Ymd_His') . ".pdf", ["Attachment" => false]);

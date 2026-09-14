@@ -220,6 +220,14 @@ body.nav-top { padding-left: 0; padding-top: var(--topbar-height); }
 
     <li class="<?= $is_active('pendenzen.php') ?>"><a href="<?= e(url('pages/pendenzen.php')) ?>">📜 Aufgaben</a></li>
     <li class="<?= $is_active('terminprogramm.php') ?>"><a href="<?= e(url('pages/terminprogramm.php')) ?>">📅 Terminprogramm</a></li>
+    <li class="has-submenu <?= ($is_active('files.php') || $is_active('ordner_vorlagen.php') || $is_active('ordner_verknuepfen.php')) ? 'submenu-open active' : '' ?>">
+      <a href="<?= e(url('pages/files.php')) ?>">📁 Ablage &amp; Drive</a>
+      <ul class="submenu">
+        <li><a href="<?= e(url('pages/files.php')) ?>">📁 Google Drive Explorer</a></li>
+        <li><a href="<?= e(url('pages/ordner_vorlagen.php')) ?>">📦 Ordner-Vorlagen</a></li>
+        <li><a href="<?= e(url('pages/ordner_verknuepfen.php')) ?>">🔗 Ordner-Verknüpfungen</a></li>
+      </ul>
+    </li>
     <li class="has-submenu <?= ($is_active('finanzen.php') || $is_active('mietkontrolle') || $is_active('konto_verwaltung') || $is_active('liegenschaftsabrechnung')) ? 'submenu-open active' : '' ?>">
       <a href="<?= e(url('pages/finanzen.php')) ?>">📈 Finanzen</a>
       <ul class="submenu">

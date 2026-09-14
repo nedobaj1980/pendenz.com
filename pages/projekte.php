@@ -600,13 +600,13 @@ if ($editProject && table_exists($mysqli,'kv_konten')) {
           <td class="inline">
             <a class="btn btn-small" href="?edit=<?= $pid ?>">Bearbeiten</a>
             <a class="btn btn-small" href="projekt_dashboard.php?id=<?= $pid ?>">📊 Dashboard</a>
+            <?= link_chip('Mieterspiegel', site_prefix().'pages/mieterspiegel.php?projekt_id='.$pid, '📈') ?>
+            <?= link_chip('Abrechnung', site_prefix().'tools/liegenschaftsabrechnung/index.php?projekt_id='.$pid, '📑') ?>
+            <?= link_chip('Drive-Dateien', site_prefix().'pages/files.php?projekt_id='.$pid, '📁') ?>
+            <?= link_chip('Mietkontrolle', site_prefix().'tools/mietkontrolle/index.php?projekt_id='.$pid, '💰') ?>
             <?= link_chip('Konten', site_prefix().'tools/konto_verwaltung/index.php?projekt_id='.$pid, '💳') ?>
             <?= link_chip('Wohnungen', site_prefix().'pages/wohnungen_liste.php?projekt_id='.$pid, '🏢') ?>
             <?= link_chip('SmartTable', site_prefix().'pages/pendenzen_settings.php?projekt_id='.$pid, '⚙️') ?>
-            <?= link_chip('Mieterspiegel', site_prefix().'pages/mieterspiegel.php?projekt_id='.$pid, '📈') ?>
-            <?php if (!empty($p['fs_rel_path'])): ?>
-              <?= link_chip('Ordner', site_prefix().'pages/fs_browser.php?path='.urlencode($p['fs_rel_path']), '🗂️') ?>
-            <?php endif; ?>
             <a class="btn btn-danger btn-small" href="?delete=<?= $pid ?>" onclick="return confirm('Wirklich löschen?')">Löschen</a>
           </td>
         </tr>

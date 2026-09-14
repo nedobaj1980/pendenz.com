@@ -71,13 +71,17 @@ $ve_id     = (int)($_GET['ve_id'] ?? 0);           // falls scope=ve
 $select_mode = $return_to !== '';
 
 /** ---------- Helpers: DB-Introspektion ---------- */
-function table_exists(mysqli $db, string $table): bool {
-  $st=$db->prepare("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=? LIMIT 1");
-  $st->bind_param("s",$table); $st->execute(); $ok=(bool)$st->get_result()->fetch_row(); $st->close(); return $ok;
+if (!function_exists('table_exists')) {
+  function table_exists(mysqli $db, string $table): bool {
+    $st=$db->prepare("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=? LIMIT 1");
+    $st->bind_param("s",$table); $st->execute(); $ok=(bool)$st->get_result()->fetch_row(); $st->close(); return $ok;
+  }
 }
-function column_exists(mysqli $db, string $table, string $col): bool {
-  $st=$db->prepare("SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1");
-  $st->bind_param("ss",$table,$col); $st->execute(); $ok=(bool)$st->get_result()->fetch_row(); $st->close(); return $ok;
+if (!function_exists('column_exists')) {
+  function column_exists(mysqli $db, string $table, string $col): bool {
+    $st=$db->prepare("SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1");
+    $st->bind_param("ss",$table,$col); $st->execute(); $ok=(bool)$st->get_result()->fetch_row(); $st->close(); return $ok;
+  }
 }
 
 /** ---------- Projekt laden ---------- */
@@ -102,8 +106,9 @@ $id = $projekt_id; // Alias
 $flash = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $action = $_POST['action'] ?? '';
   // Globaler Rollout
-  if (isset($_POST['action']) && $_POST['action'] === 'rollout_template') {
+  if ($action === 'rollout_template') {
       $tplId = (int)$_POST['template_id'];
       $root = project_root_path($mysqli, $id);
       
@@ -128,14 +133,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
           fs_scan_project($mysqli, $id, 0);
           $flash = "🚀 Rollout abgeschlossen: $counter Einheiten wurden mit dem Muster strukturiert.";
-      } elseif ($act === 'set_icon_quick') {
+      }
+  } elseif ($action === 'set_icon_quick') {
       $rel = trim((string)($_POST['rel_path'] ?? ''));
       $icon = $_POST['icon'] ?? '';
       if ($rel !== '') {
         $mysqli->query("INSERT INTO fs_folder_meta (project_id, rel_path, icon) VALUES ($projekt_id, '".$mysqli->real_escape_string($rel)."', '".$mysqli->real_escape_string($icon)."') ON DUPLICATE KEY UPDATE icon='".$mysqli->real_escape_string($icon)."'");
         $flash = '✅ Symbol aktualisiert.';
       }
-    }
   }
 }
 
@@ -525,8 +530,9 @@ $coverChoices = ($ctxRel!=='') ? image_candidates($mysqli,$projekt_id,$ctxRel) :
             <a class="btn" style="background:#8b5cf6;" href="projekt_plaene.php?projekt_id=<?= (int)$projekt_id ?>">📍 Pläne & Grundrisse</a>
             <a class="btn" href="project_storage.php?projekt_id=<?= (int)$projekt_id ?>">🌳 Ordner &amp; Speicher</a>
             <a class="btn" href="files.php?projekt_id=<?= (int)$projekt_id ?><?= $ctxRel!==''?'&path='.rawurlencode($ctxRel):'' ?>">📁 Im Dateibrowser</a>
-            <a class="btn" style="background:#3b82f6;" href="mieterspiegel.php?projekt_id=<?= (int)$projekt_id ?>">📋 Mieterspiegel</a>
-            <a class="btn" style="background:linear-gradient(135deg, #10b981, #059669);" href="/pendenz.com/tools/mietkontrolle/index.php?projekt_id=<?= (int)$projekt_id ?>">💰 Mietkontrolle</a>
+            <a class="btn" style="background:#3b82f6;" href="mieterspiegel.php?projekt_id=<?= (int)$projekt_id ?>">📈 Mieterspiegel</a>
+            <a class="btn" style="background:linear-gradient(135deg, #d97706, #b45309);" href="<?= e(url('tools/liegenschaftsabrechnung/index.php?projekt_id=' . (int)$projekt_id)) ?>">📑 Liegenschaftsabrechnung</a>
+            <a class="btn" style="background:linear-gradient(135deg, #10b981, #059669);" href="<?= e(url('tools/mietkontrolle/index.php?projekt_id=' . (int)$projekt_id)) ?>">💰 Mietkontrolle</a>
             <a class="btn" style="background:linear-gradient(135deg, #1abc9c, #16a085);" href="quick_folder_editor.php?projekt_id=<?= (int)$projekt_id ?><?= $ctxRel!==''?'&path='.rawurlencode($ctxRel):'' ?>">⚡ Schneller Ordner-Editor</a>
             <?php if ($vorlage_id): ?>
               <a class="btn" href="ordner_vorlagen_edit.php?id=<?= (int)$vorlage_id ?>">🧰 Vorlage bearbeiten</a>

@@ -3686,9 +3686,15 @@ if ($res) {
                                                                 name="inline_objekt_id" data-row-id="<?php echo (int) $row['id']; ?>"
                                                                 form="<?php echo h($inlineFormId); ?>">
                                                                 <option value="">-</option>
-                                                                <?php foreach ($objekte as $o): ?>
+                                                                <?php 
+                                                                $pIdRow = (int)($row['projekt_id'] ?? 0);
+                                                                $selectedOId = (int)($row['objekt_id'] ?? 0);
+                                                                foreach ($objekte as $o): 
+                                                                    if ($pIdRow > 0 && (int)$o['projekt_id'] !== $pIdRow && (int)$o['id'] !== $selectedOId) continue;
+                                                                    if ($pIdRow === 0 && $selectedOId === 0) continue;
+                                                                ?>
                                                                     <option value="<?php echo (int) $o['id']; ?>"
-                                                                        data-projekt-id="<?php echo (int) ($o['projekt_id'] ?? 0); ?>" <?php echo ((int) ($row['objekt_id'] ?? 0) === (int) $o['id']) ? 'selected' : ''; ?>>
+                                                                        data-projekt-id="<?php echo (int) ($o['projekt_id'] ?? 0); ?>" <?php echo ($selectedOId === (int) $o['id']) ? 'selected' : ''; ?>>
                                                                         <?php echo h((string) $o['name']); ?>
                                                                     </option>
                                                                 <?php endforeach; ?>
@@ -3699,9 +3705,15 @@ if ($res) {
                                                                 name="inline_wohnung_id" data-row-id="<?php echo (int) $row['id']; ?>"
                                                                 form="<?php echo h($inlineFormId); ?>">
                                                                 <option value="">-</option>
-                                                                <?php foreach ($wohnungen as $w): ?>
+                                                                <?php 
+                                                                $oIdRow = (int)($row['objekt_id'] ?? 0);
+                                                                $selectedWId = (int)($row['wohnung_id'] ?? 0);
+                                                                foreach ($wohnungen as $w): 
+                                                                    if ($oIdRow > 0 && (int)$w['objekt_id'] !== $oIdRow && (int)$w['id'] !== $selectedWId) continue;
+                                                                    if ($oIdRow === 0 && $selectedWId === 0) continue;
+                                                                ?>
                                                                     <option value="<?php echo (int) $w['id']; ?>"
-                                                                        data-objekt-id="<?php echo (int) ($w['objekt_id'] ?? 0); ?>" <?php echo ((int) ($row['wohnung_id'] ?? 0) === (int) $w['id']) ? 'selected' : ''; ?>>
+                                                                        data-objekt-id="<?php echo (int) ($w['objekt_id'] ?? 0); ?>" <?php echo ($selectedWId === (int) $w['id']) ? 'selected' : ''; ?>>
                                                                         <?php echo h((string) $w['name']); ?>
                                                                     </option>
                                                                 <?php endforeach; ?>
@@ -3712,9 +3724,15 @@ if ($res) {
                                                                 data-row-id="<?php echo (int) $row['id']; ?>"
                                                                 form="<?php echo h($inlineFormId); ?>">
                                                                 <option value="">-</option>
-                                                                <?php foreach ($raeume as $r): ?>
+                                                                <?php 
+                                                                $wIdRow = (int)($row['wohnung_id'] ?? 0);
+                                                                $selectedRId = (int)($row['raum_id'] ?? 0);
+                                                                foreach ($raeume as $r): 
+                                                                    if ($wIdRow > 0 && (int)$r['wohnung_id'] !== $wIdRow && (int)$r['id'] !== $selectedRId) continue;
+                                                                    if ($wIdRow === 0 && $selectedRId === 0) continue;
+                                                                ?>
                                                                     <option value="<?php echo (int) $r['id']; ?>"
-                                                                        data-wohnung-id="<?php echo (int) ($r['wohnung_id'] ?? 0); ?>" <?php echo ((int) ($row['raum_id'] ?? 0) === (int) $r['id']) ? 'selected' : ''; ?>>
+                                                                        data-wohnung-id="<?php echo (int) ($r['wohnung_id'] ?? 0); ?>" <?php echo ($selectedRId === (int) $r['id']) ? 'selected' : ''; ?>>
                                                                         <?php echo h((string) $r['name']); ?>
                                                                     </option>
                                                                 <?php endforeach; ?>
@@ -4249,8 +4267,11 @@ if ($res) {
                     style="padding: 10px 20px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; font-weight: bold;"
                     onclick="document.getElementById('protocolModal').style.display='none'">Abbrechen</button>
                 <button type="button" id="btnExportWithProtocol"
-                    style="padding: 10px 25px; border-radius: 6px; border: none; background: #00a896; color: #fff; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 6px -1px rgba(0, 168, 150, 0.2);">📄
-                    PROTOKOLL ALS PDF GENERIEREN</button>
+                    style="padding: 10px 20px; border-radius: 6px; border: none; background: #00a896; color: #fff; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 6px -1px rgba(0, 168, 150, 0.2);">📄
+                    PDF ANZEIGEN</button>
+                <button type="button" id="btnSaveProtocolToDrive"
+                    style="padding: 10px 20px; border-radius: 6px; border: none; background: #2563eb; color: #fff; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">☁️
+                    AUF DRIVE SICHERN</button>
             </div>
         </div>
 
@@ -4902,6 +4923,28 @@ if ($res) {
             bindDate(r.querySelector('[name="inline_startdatum"]'), r.querySelector('[name="inline_enddatum"]'), r.querySelector('[name="inline_dauer"]'));
         });
 
+        window.GLOBAL_OBJEKTE = <?php echo json_encode($objekte, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+        window.GLOBAL_WOHNUNGEN = <?php echo json_encode($wohnungen, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+        window.GLOBAL_RAEUME = <?php echo json_encode($raeume, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+
+        const populateFromGlobal = (childSelect, items, parentVal, parentKey) => {
+            if (!childSelect) return;
+            const currentVal = childSelect.value;
+            childSelect.innerHTML = '<option value="">-</option>';
+            items.forEach(item => {
+                if (!parentVal || String(item[parentKey]) === String(parentVal)) {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = item.name;
+                    if (String(item.id) === String(currentVal)) opt.selected = true;
+                    childSelect.appendChild(opt);
+                }
+            });
+            if (currentVal && !childSelect.querySelector(`option[value="${currentVal}"]`)) {
+                childSelect.value = '';
+            }
+        };
+
         // Inline Select Hierarchy Filtering
         document.querySelectorAll('tbody tr').forEach(r => {
             const sProj = r.querySelector('.inline-projekt-select');
@@ -4909,39 +4952,24 @@ if ($res) {
             const sWoh = r.querySelector('.inline-wohnung-select');
             const sRaum = r.querySelector('.inline-raum-select');
 
-            const filterOptions = (parentSelect, childSelect, dataAttr) => {
-                if (!parentSelect || !childSelect) return;
-
-                if (!childSelect.masterOptions) {
-                    childSelect.masterOptions = Array.from(childSelect.options);
-                }
-
-                const parentVal = parentSelect.value;
-                const currentVal = childSelect.value;
-
-                childSelect.innerHTML = '';
-                childSelect.masterOptions.forEach(opt => {
-                    const match = !opt.value || !parentVal || opt.dataset[dataAttr] === parentVal;
-                    if (match) childSelect.appendChild(opt.cloneNode(true));
-                });
-
-                childSelect.value = currentVal;
-            };
-
             if (sProj && sObj) {
-                sProj.addEventListener('change', () => { filterOptions(sProj, sObj, 'projektId'); if (sObj) sObj.dispatchEvent(new Event('change')); });
+                sProj.addEventListener('change', () => {
+                    populateFromGlobal(sObj, window.GLOBAL_OBJEKTE || [], sProj.value, 'projekt_id');
+                    if (sWoh) populateFromGlobal(sWoh, window.GLOBAL_WOHNUNGEN || [], sObj.value, 'objekt_id');
+                    if (sRaum) populateFromGlobal(sRaum, window.GLOBAL_RAEUME || [], sWoh ? sWoh.value : '', 'wohnung_id');
+                });
             }
             if (sObj && sWoh) {
-                sObj.addEventListener('change', () => { filterOptions(sObj, sWoh, 'objektId'); if (sWoh) sWoh.dispatchEvent(new Event('change')); });
+                sObj.addEventListener('change', () => {
+                    populateFromGlobal(sWoh, window.GLOBAL_WOHNUNGEN || [], sObj.value, 'objekt_id');
+                    if (sRaum) populateFromGlobal(sRaum, window.GLOBAL_RAEUME || [], sWoh ? sWoh.value : '', 'wohnung_id');
+                });
             }
             if (sWoh && sRaum) {
-                sWoh.addEventListener('change', () => filterOptions(sWoh, sRaum, 'wohnungId'));
+                sWoh.addEventListener('change', () => {
+                    populateFromGlobal(sRaum, window.GLOBAL_RAEUME || [], sWoh.value, 'wohnung_id');
+                });
             }
-
-            // Initial filtering
-            if (sProj && sObj) filterOptions(sProj, sObj, 'projektId');
-            if (sObj && sWoh) filterOptions(sObj, sWoh, 'objektId');
-            if (sWoh && sRaum) filterOptions(sWoh, sRaum, 'wohnungId');
         });
 
         // Dashboard Navigation
@@ -5637,6 +5665,97 @@ if ($res) {
             } catch (err) {
                 alert('Fehler beim PDF-Export: ' + err.message);
                 console.error(err);
+            }
+        });
+
+        document.getElementById('btnSaveProtocolToDrive')?.addEventListener('click', () => {
+            try {
+                const fG = document.getElementById('filterGlobal')?.value || '';
+                const fP = document.getElementById('filterProjekt')?.value || '';
+                const fS = document.getElementById('filterStatus')?.value || '';
+                const fZ = document.getElementById('filterZustaendig')?.value || '';
+                const fW = document.getElementById('filterWichtigkeit')?.value || '';
+
+                const pData = {
+                    title: document.getElementById('p_title')?.value || '',
+                    list_title: document.getElementById('p_list_title')?.value || '',
+                    subject: document.getElementById('p_subject')?.value || '',
+                    obj_nr: document.getElementById('p_obj_nr')?.value || '',
+                    vertreten_durch: document.getElementById('p_vertreten_durch')?.value || '',
+                    wv_date: document.getElementById('p_wv_date')?.value || '',
+                    wv_nr: document.getElementById('p_wv_nr')?.value || '',
+                    bkp: document.getElementById('p_bkp')?.value || '',
+                    land: document.getElementById('p_land')?.value || '',
+                    fix_date: document.getElementById('p_fix_date')?.value || '',
+                    datetime: document.getElementById('p_datetime')?.value || '',
+                    location: document.getElementById('p_location')?.value || '',
+                    leader: document.getElementById('p_leader')?.value || '',
+                    project: document.getElementById('p_project')?.options[document.getElementById('p_project')?.selectedIndex]?.text || '',
+                    object: document.getElementById('p_object')?.options[document.getElementById('p_object')?.selectedIndex]?.text || '',
+                    apartment: document.getElementById('p_apartment')?.options[document.getElementById('p_apartment')?.selectedIndex]?.text || '',
+                    intro: document.getElementById('p_intro')?.value || '',
+                    outro: document.getElementById('p_outro')?.value || '',
+                    art159: document.getElementById('p_art159')?.checked || false,
+                    art160: document.getElementById('p_art160')?.checked || false,
+                    art161: document.getElementById('p_art161')?.checked || false,
+                    sigBesteller: (() => { const c = document.getElementById('sigBesteller'); return c ? c.toDataURL() : ''; })(),
+                    sigUnternehmer: (() => { const c = document.getElementById('sigUnternehmer'); return c ? c.toDataURL() : ''; })(),
+                    participants: []
+                };
+
+                document.querySelectorAll('.participant-row').forEach(tr => {
+                    pData.participants.push({
+                        status: tr.querySelector('.p_status')?.value || '',
+                        name: tr.querySelector('.p_name')?.value || '',
+                        position: tr.querySelector('.p_position')?.value || '',
+                        email: tr.querySelector('.p_email')?.value || '',
+                        tel: tr.querySelector('.p_tel')?.value || '',
+                        company: tr.querySelector('.p_company')?.value || ''
+                    });
+                });
+
+                const sortMode = document.querySelector('input[name="pdf_sort_mode"]:checked')?.value || 'nummer';
+                const projId = document.getElementById('p_project')?.value || '';
+
+                const btn = document.getElementById('btnSaveProtocolToDrive');
+                const origText = btn.innerHTML;
+                btn.innerHTML = '⏳ Sichern...';
+                btn.disabled = true;
+
+                const formData = new FormData();
+                formData.append('save_to_drive', '1');
+                formData.append('format', 'json');
+                formData.append('protocol_data', JSON.stringify(pData));
+                formData.append('sort_mode', sortMode);
+                if (projId) formData.append('projekt_id', projId);
+                if (fG) formData.append('q', fG);
+                if (fP) formData.append('projekt_name', fP);
+                if (fS) formData.append('status', fS);
+                if (fZ) formData.append('zustaendig_name', fZ);
+                if (fW) formData.append('wichtigkeit', fW);
+
+                fetch('pendenzen_list_pdf.php', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
+                })
+                .then(r => r.json())
+                .then(res => {
+                    btn.innerHTML = origText;
+                    btn.disabled = false;
+                    if (res && res.success) {
+                        alert('☁️ Erfolgreich auf Google Drive gesichert:\n' + res.path);
+                    } else {
+                        alert('Fehler beim Sichern auf Google Drive.');
+                    }
+                })
+                .catch(err => {
+                    btn.innerHTML = origText;
+                    btn.disabled = false;
+                    alert('Fehler beim Speichern: ' + err.message);
+                });
+            } catch (err) {
+                alert('Fehler: ' + err.message);
             }
         });
 

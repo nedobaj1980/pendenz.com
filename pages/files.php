@@ -8,15 +8,32 @@ require_login();
 require_once __DIR__ . '/../includes/fs.php';
 
 $projectId = (int)($_GET['projekt_id'] ?? 0);
-if ($projectId <= 0) die("Projekt ID fehlt.");
+if ($projectId <= 0 && !empty($_SESSION['current_project_id'])) {
+    $projectId = (int)$_SESSION['current_project_id'];
+}
+if ($projectId <= 0) {
+    $firstProj = $mysqli->query("SELECT id FROM projekte ORDER BY nummer ASC, id ASC LIMIT 1")->fetch_assoc();
+    if ($firstProj) $projectId = (int)$firstProj['id'];
+}
+if ($projectId <= 0) {
+    die("Keine Liegenschaften/Projekte in der Datenbank gefunden.");
+}
+$_SESSION['current_project_id'] = $projectId;
+
 if (function_exists('require_project_access')) require_project_access($projectId);
 
 $proj = ['name' => 'Unbenanntes Projekt'];
-$stP = $mysqli->prepare("SELECT name FROM projekte WHERE id=?");
+$stP = $mysqli->prepare("SELECT id, nummer, name, root_path FROM projekte WHERE id=?");
 $stP->bind_param("i", $projectId);
 $stP->execute();
 if ($rowP = $stP->get_result()->fetch_assoc()) $proj = $rowP;
 $stP->close();
+
+$allProjects = [];
+$resAllP = $mysqli->query("SELECT id, nummer, name FROM projekte ORDER BY nummer ASC, name ASC");
+if ($resAllP) {
+    while ($r = $resAllP->fetch_assoc()) $allProjects[] = $r;
+}
 
 $pathRel = isset($_GET['path']) ? (str_replace('\\', '/', ltrim(rtrim((string)$_GET['path'], '/'), '/'))) : '';
 
@@ -126,18 +143,41 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
   @media (max-width: 800px) { .explorer { grid-template-columns: 1fr; } .sidebar { display: none; } }
 </style>
 
-<div class="container" style="max-width:1300px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-    <h2 style="margin:0;">📁 Dateimanager: <span style="color:var(--hi)"><?= htmlspecialchars($proj['name'] ?? 'Projekt') ?></span></h2>
-    <div style="display:flex; gap:8px;">
-       <a class="btn" href="<?= url('pages/project_storage.php?projekt_id='.$projectId) ?>">⚙️ Speicher & Scan</a>
+<div class="container" style="max-width:1440px;">
+  <!-- Liegenschafts-Auswahl & Google Drive Header -->
+  <div style="background:#0f172a; border:1px solid #1e293b; border-radius:12px; padding:16px 20px; margin-bottom:16px; color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <span style="font-size:24px;">📁</span>
+      <div>
+        <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Google Drive Dateisystem &amp; Ablage</div>
+        <div style="font-size:18px; font-weight:800; color:#fff; display:flex; align-items:center; gap:10px;">
+          <span><?= htmlspecialchars($proj['name'] ?? 'Projekt') ?></span>
+          <select onchange="location.href='?projekt_id='+this.value" style="padding:4px 10px; border-radius:6px; border:1px solid #334155; font-size:13px; font-weight:700; color:#38bdf8; background:#1e293b; cursor:pointer;">
+            <?php foreach ($allProjects as $ap): ?>
+              <option value="<?= $ap['id'] ?>" <?= (int)$ap['id'] === $projectId ? 'selected' : '' ?>>
+                <?= htmlspecialchars($ap['nummer'] ? ($ap['nummer'] . ' - ' . $ap['name']) : $ap['name']) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </div>
+      <div style="background:#1e293b; padding:6px 12px; border-radius:8px; border:1px solid #334155; font-size:11px; color:#cbd5e1; display:flex; align-items:center; gap:6px;">
+        <span style="color:#10b981; font-weight:800;">●</span>
+        <span>Drive-Pfad: <code style="color:#38bdf8;"><?= htmlspecialchars($root ?: 'Nicht gemountet') ?></code></span>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+       <a class="btn btn-outline" href="<?= url('pages/mieterspiegel.php?projekt_id='.$projectId) ?>" style="font-size:12px; font-weight:700;">📈 Zum Mieterspiegel</a>
+       <a class="btn btn-outline" href="<?= url('tools/liegenschaftsabrechnung/index.php?projekt_id='.$projectId) ?>" style="font-size:12px; font-weight:700; color:#a78bfa; border-color:#7c3aed;">📑 Liegenschaftsabrechnung</a>
+       <a class="btn btn-outline" href="<?= url('pages/ordner_vorlagen.php') ?>" style="font-size:12px;" title="Standard-Ordnerstrukturen für Einheiten">📦 Vorlagen</a>
        <form method="post" style="margin:0">
          <input type="hidden" name="action" value="scan">
-         <button class="btn primary" type="submit">🔄 Scan & Refresh</button>
+         <button class="btn primary" type="submit" style="font-size:12px;">🔄 Scan &amp; Refresh</button>
        </form>
        <form method="post" style="margin:0">
          <input type="hidden" name="action" value="sync_fs">
-         <button class="btn btn-outline" type="submit" title="Gleicht die Wohnungs-Ordner mit der Datenbank ab und legt fehlende an">🔄 Drive-Sync</button>
+         <button class="btn btn-outline" type="submit" title="Gleicht die Wohnungs-Ordner mit Google Drive ab" style="font-size:12px;">🔄 Drive-Sync</button>
        </form>
     </div>
   </div>

@@ -1,13 +1,22 @@
 <?php
-require_once '../config.php';
-require_once '../includes/room_taxonomy.php';
-require_once '../includes/vorgang_taxonomy.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/room_taxonomy.php';
+require_once __DIR__ . '/../includes/vorgang_taxonomy.php';
 
-$pid = $_GET['projekt_id'] ?? 0;
-$uid = $_GET['unit_id'] ?? 0;
+$pid = (int)($_GET['projekt_id'] ?? 0);
+$uid = (int)($_GET['unit_id'] ?? 0);
 
-// Liegenschaft & Wohnung laden
-$unit = $mysqli->query("SELECT w.*, p.name as p_name, o.name as obj_name FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id JOIN projekte p ON o.projekt_id = p.id WHERE w.id = $uid AND p.id = $pid")->fetch_assoc();
+// Liegenschaft & Wohnung laden (robust)
+$unit = null;
+if ($uid > 0) {
+    if ($pid > 0) {
+        $unit = $mysqli->query("SELECT w.*, p.id as p_id, p.name as p_name, o.name as obj_name FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id JOIN projekte p ON o.projekt_id = p.id WHERE w.id = $uid AND p.id = $pid")->fetch_assoc();
+    }
+    if (empty($unit)) {
+        $unit = $mysqli->query("SELECT w.*, p.id as p_id, p.name as p_name, o.name as obj_name FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id JOIN projekte p ON o.projekt_id = p.id WHERE w.id = $uid")->fetch_assoc();
+        if ($unit) $pid = (int)$unit['p_id'];
+    }
+}
 if (!$unit) {
     die("Wohnung nicht gefunden.");
 }
@@ -180,8 +189,8 @@ $pdf_rooms = [
 ];
 
 $PAGE_TITLE = 'Wohnungsabnahme - ' . ($unit['name'] ?? '');
-require_once '../includes/header.php';
-require_once '../includes/nav_dispatch.php';
+require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/nav_dispatch.php';
 ?>
 
 <main class="page">
