@@ -907,6 +907,7 @@ if (isset($mysqli)) {
         <a href="<?= e(url('pages/finanzen.php')) ?>">📈 Finanzen</a>
         <a href="<?= e(url('tools/mietkontrolle/index.php')) ?>">💰 Mietkontrolle</a>
         <a href="<?= e(url('tools/konto_verwaltung/index.php')) ?>">🏦 Bankkonto</a>
+        <a href="<?= e(url('tools/liegenschaftsabrechnung/index.php')) ?>">📑 Liegenschaftsabrechnung</a>
       </div>
     </div>
     <div class="mab-icon mab-has-sub">
@@ -1047,12 +1048,13 @@ if (isset($mysqli)) {
     <!-- Controlling -->
     <div class="nav-section">
       <ul class="nav-menu">
-        <li class="has-submenu <?= ($is_active('finanzen.php') || $is_active('mietkontrolle') || $is_active('konto_verwaltung')) ? 'active' : '' ?>">
+        <li class="has-submenu <?= ($is_active('finanzen.php') || $is_active('mietkontrolle') || $is_active('konto_verwaltung') || $is_active('liegenschaftsabrechnung')) ? 'active' : '' ?>">
           <a href="<?= e(url('pages/finanzen.php')) ?>">📈 <span class="nav-text">Finanzen</span></a>
           <ul class="submenu">
             <li><a href="<?= e(url('pages/finanzen.php')) ?>">📈 Finanz-Übersicht</a></li>
             <li><a href="<?= e(url('tools/mietkontrolle/index.php')) ?>">💰 Mietkontrolle &amp; Zahlungen</a></li>
             <li><a href="<?= e(url('tools/konto_verwaltung/index.php')) ?>">🏦 Bankkonto &amp; CSV-Abgleich</a></li>
+            <li><a href="<?= e(url('tools/liegenschaftsabrechnung/index.php')) ?>">📑 Liegenschaftsabrechnung</a></li>
           </ul>
         </li>
         <li class="has-submenu <?= $is_active('audit.php') ?>">

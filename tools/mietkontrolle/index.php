@@ -433,6 +433,7 @@ require_once __DIR__ . '/../../includes/nav_dispatch.php';
       <button onclick="window.print()" class="btn-nav">🖨️ Drucken / PDF</button>
       <a href="../konto_verwaltung/import.php" class="btn-nav" style="background:#0284c7; color:#fff; border-color:#0284c7;">📥 Bank-CSV importieren</a>
       <a href="../konto_verwaltung/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="btn-nav" style="background:#10b981; color:#fff; border-color:#10b981;">💳 Zum Liegenschaftskonto</a>
+      <a href="../liegenschaftsabrechnung/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="btn-nav" style="background:#7c3aed; color:#fff; border-color:#6d28d9; font-weight:600;">📑 Zur Liegenschaftsabrechnung</a>
     </div>
   </div>
 

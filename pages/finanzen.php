@@ -411,9 +411,9 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
             <h1>📊 Finanzen &amp; Zahlungs-Cockpit</h1>
             <p>Mieteinnahmen, Barzahlungen, Kontobewegungen und Soll/Ist-Vergleich aller Liegenschaften</p>
         </div>
-        <div class="fin-header-nav">
             <a href="<?= e(url('tools/mietkontrolle/index.php')) ?>" class="fin-btn fin-btn-emerald">💰 Zur Mietkontrolle</a>
             <a href="<?= e(url('tools/konto_verwaltung/index.php')) ?>" class="fin-btn fin-btn-blue">🏦 Bankkonto &amp; CSV-Import</a>
+            <a href="<?= e(url('tools/liegenschaftsabrechnung/index.php')) ?>" class="fin-btn" style="background:#7c3aed; color:#fff; font-weight:700;">📑 Liegenschaftsabrechnung</a>
             <a href="<?= e(url('pages/mieterspiegel.php')) ?>" class="fin-btn fin-btn-slate">📋 Mieterspiegel</a>
         </div>
     </header>

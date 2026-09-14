@@ -220,12 +220,13 @@ body.nav-top { padding-left: 0; padding-top: var(--topbar-height); }
 
     <li class="<?= $is_active('pendenzen.php') ?>"><a href="<?= e(url('pages/pendenzen.php')) ?>">📜 Aufgaben</a></li>
     <li class="<?= $is_active('terminprogramm.php') ?>"><a href="<?= e(url('pages/terminprogramm.php')) ?>">📅 Terminprogramm</a></li>
-    <li class="has-submenu <?= ($is_active('finanzen.php') || $is_active('mietkontrolle') || $is_active('konto_verwaltung')) ? 'submenu-open active' : '' ?>">
+    <li class="has-submenu <?= ($is_active('finanzen.php') || $is_active('mietkontrolle') || $is_active('konto_verwaltung') || $is_active('liegenschaftsabrechnung')) ? 'submenu-open active' : '' ?>">
       <a href="<?= e(url('pages/finanzen.php')) ?>">📈 Finanzen</a>
       <ul class="submenu">
         <li class="<?= $is_active('finanzen.php') ?>"><a href="<?= e(url('pages/finanzen.php')) ?>">📊 Übersicht</a></li>
         <li><a href="<?= e(url('tools/mietkontrolle/index.php')) ?>">💰 Mietkontrolle</a></li>
         <li><a href="<?= e(url('tools/konto_verwaltung/index.php')) ?>">🏦 Bankkonto &amp; CSV</a></li>
+        <li><a href="<?= e(url('tools/liegenschaftsabrechnung/index.php')) ?>">📑 Liegenschaftsabrechnung</a></li>
       </ul>
     </li>
   </ul>
