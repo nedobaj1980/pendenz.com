@@ -11,14 +11,23 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/authz.php';
 require_once __DIR__ . '/../../includes/audit.php';
 require_login();
-require_once __DIR__ . '/../../includes/functions.php'; // url(), site_prefix(), db()
+require_once __DIR__ . '/../../includes/functions.php'; // url(), site_prefix()
 
 /* ===== Layout / Nav ===== */
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/nav_dispatch.php';
+require_once __DIR__ . '/../../includes/csrf.php';
 
-// ... deine bestehenden require_once ...
-require_once __DIR__ . '/../../includes/csrf.php'; // CSRF für POST-Formulare
+global $mysqli, $db;
+if (!isset($mysqli) || !($mysqli instanceof mysqli)) {
+  if (isset($GLOBALS['mysqli']) && ($GLOBALS['mysqli'] instanceof mysqli)) {
+    $mysqli = $GLOBALS['mysqli'];
+  } elseif (isset($GLOBALS['db']) && ($GLOBALS['db'] instanceof mysqli)) {
+    $mysqli = $GLOBALS['db'];
+  } elseif (isset($db) && ($db instanceof mysqli)) {
+    $mysqli = $db;
+  }
+}
 
 // ==== HILFSFUNKTIONEN (kollisionsfrei, präfix "kv_") =========================
 if (!function_exists('kv_table_has_column')) {
@@ -43,8 +52,27 @@ if (!function_exists('kv_html')) {
   function kv_html($v){ return htmlspecialchars((string)$v, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 }
 
-// ==== KONTEXT (GET) ==========================================================
-$ctx_projekt_id  = isset($_GET['projekt_id']) ? (int)$_GET['projekt_id'] : 0;
+// ==== KONTEXT (GET / SESSION) ===============================================
+$isPortfolioOverview = (isset($_GET['projekt_id']) && $_GET['projekt_id'] === 'all');
+if ($isPortfolioOverview) {
+  $ctx_projekt_id = 0;
+  $projektId      = null;
+} elseif (isset($_GET['projekt_id']) && (int)$_GET['projekt_id'] > 0) {
+  $ctx_projekt_id = (int)$_GET['projekt_id'];
+  $projektId      = $ctx_projekt_id;
+  $_SESSION['current_project_id'] = $projektId;
+} elseif (!empty($_SESSION['current_project_id']) && (int)$_SESSION['current_project_id'] > 0) {
+  $ctx_projekt_id = (int)$_SESSION['current_project_id'];
+  $projektId      = $ctx_projekt_id;
+} else {
+  // Standardmäßig: Projekt 3 (Romanshorn) wo Buchungen vorhanden sind
+  $ctx_projekt_id = 3;
+  $projektId      = 3;
+  $_SESSION['current_project_id'] = 3;
+}
+$GLOBALS['current_active_pid'] = $projektId;
+$GLOBALS['__projekt_id']       = $projektId;
+
 $ctx_objekt_id   = isset($_GET['objekt_id'])  ? (int)$_GET['objekt_id']  : 0;
 $ctx_wohnung_id  = isset($_GET['wohnung_id']) ? (int)$_GET['wohnung_id'] : 0;
 
@@ -57,6 +85,8 @@ $kv_objekte  = $ctx_projekt_id
   : [];
 // Wohnungen (optional nach Objekt)
 $kv_wohnungen = $ctx_objekt_id
+  ? kv_fetch_all($mysqli, "SELECT id, name as bezeichnung FROM wohnungen WHERE objekt_id=? ORDER BY name", [$ctx_objekt_id], 'i')
+  : [];
   ? kv_fetch_all($mysqli, "SELECT id, name as bezeichnung FROM wohnungen WHERE objekt_id=? ORDER BY name", [$ctx_objekt_id], 'i')
   : [];
 // Aktiver Mieter (heute) für Wohnung
@@ -167,11 +197,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $kv_flash = "⚡ Auto-Match abgeschlossen: {$res['matched_count']} von {$res['total_checked']} Buchungen wurden erfolgreich Mietern/Wohnungen zugeordnet!";
   }
 
-  // 4) Einzelne Buchung Wohnung & Mieter zuweisen
+  // 4) Einzelne Buchung Wohnung & Mieter zuweisen mit Kategorie & Regel-Lernen
   if ($act === 'assign_single') {
     $kid = (int)($_POST['konto_id'] ?? 0);
     $wid = (int)($_POST['wohnung_id'] ?? 0);
     $mid = (int)($_POST['mieter_id'] ?? 0);
+    $kat = trim($_POST['kategorie'] ?? '');
+    $rememberRule = !empty($_POST['remember_rule']);
+
     $wLbl = '';
     if ($wid > 0) {
       $rw = $mysqli->query("SELECT name FROM wohnungen WHERE id = $wid")->fetch_assoc();
@@ -183,11 +216,49 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     } else {
       $mid = null;
     }
-    $st = $mysqli->prepare("UPDATE liegenschafts_konto SET wohnung_id=?, mieter_id=?, wohnung_label=?, kategorie = IF(kategorie IS NULL OR kategorie='', 'Miete', kategorie) WHERE id=?");
-    $st->bind_param("iisi", $wid, $mid, $wLbl, $kid);
+
+    if (empty($kat)) {
+      $kat = ($wid > 0 || $mid > 0) ? 'Miete' : 'Unterhalt & Reparaturen';
+    }
+
+    $st = $mysqli->prepare("UPDATE liegenschafts_konto SET wohnung_id=?, mieter_id=?, wohnung_label=?, kategorie=? WHERE id=?");
+    $st->bind_param("iissi", $wid, $mid, $wLbl, $kat, $kid);
     $st->execute();
     $st->close();
-    $kv_flash = "✅ Buchung #$kid erfolgreich Wohnung & Mieter zugewiesen.";
+
+    // Regel für Folgejahre merken (Dauer-Regel für diesen Zahlungsabsender)
+    if ($rememberRule && $kid > 0) {
+      $bkRow = $mysqli->query("SELECT beschreibung, liegenschaft_id, projekt_id FROM liegenschafts_konto WHERE id = $kid")->fetch_assoc();
+      if ($bkRow) {
+        $bDesc = trim($bkRow['beschreibung']);
+        $cleaned = preg_replace('/^(Gutschrift\s+|E-Banking\s+(Auftrag|Dauerauftrag)\s+(an\s+)?|Vergütung\s+|Belastung\s+)/i', '', $bDesc);
+        $cleaned = trim($cleaned);
+        $parts = preg_split('/[,\/]/', $cleaned);
+        $rulePat = trim($parts[0]);
+        if (mb_strlen($rulePat) >= 3) {
+          $rPid = (int)($bkRow['projekt_id'] ?: ($bkRow['liegenschaft_id'] ?: $projektId));
+          $stChk = $mysqli->prepare("SELECT id FROM konto_rules WHERE pattern = ? AND (liegenschaft_id = ? OR liegenschaft_id IS NULL OR liegenschaft_id = 0)");
+          $stChk->bind_param("si", $rulePat, $rPid);
+          $stChk->execute();
+          $exRule = $stChk->get_result()->fetch_assoc();
+          $stChk->close();
+
+          if ($exRule) {
+            $stUpd = $mysqli->prepare("UPDATE konto_rules SET wohnung_id=?, mieter_id=?, wohnung_label=?, set_kategorie=?, aktiv=1 WHERE id=?");
+            $stUpd->bind_param("iissi", $wid, $mid, $wLbl, $kat, $exRule['id']);
+            $stUpd->execute();
+            $stUpd->close();
+          } else {
+            $stIns = $mysqli->prepare("INSERT INTO konto_rules (aktiv, priority, pattern, is_regex, liegenschaft_id, wohnung_id, mieter_id, wohnung_label, set_kategorie, note, created_at) VALUES (1, 10, ?, 0, ?, ?, ?, ?, ?, 'Gelernt aus Zuweisung', NOW())");
+            $stIns->bind_param("siiisss", $rulePat, $rPid, $wid, $mid, $wLbl, $kat);
+            $stIns->execute();
+            $stIns->close();
+          }
+        }
+      }
+    }
+
+    $kv_flash = "✅ Buchung #$kid erfolgreich zugewiesen" . ($rememberRule ? " und Dauer-Regel für Folgejahre gemerkt!" : ".");
   }
 
   // 5) Bankkonto einer Liegenschaft speichern / bearbeiten
@@ -294,9 +365,14 @@ foreach ($allKonten as $ak) {
   }
 }
 
-// Alle Buchungsjahre aus liegenschafts_konto ermitteln
+// Alle Buchungsjahre aus liegenschafts_konto ermitteln (projektbezogen wenn Projekt aktiv)
 $dbYears = [];
-$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum != '0000-00-00' ORDER BY yr DESC");
+$yrSql = "SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum != '0000-00-00'";
+if ($projektId) {
+  $yrSql .= " AND (liegenschaft_id = $projektId OR projekt_id = $projektId)";
+}
+$yrSql .= " ORDER BY yr DESC";
+$yrRes = $mysqli->query($yrSql);
 if ($yrRes) {
   while ($r = $yrRes->fetch_assoc()) {
     $y = (int)$r['yr'];
@@ -310,28 +386,37 @@ rsort($availableYears);
 /* ------------------------------
    Filter einsammeln
 --------------------------------*/
-$projektId    = isset($_GET['projekt_id']) && $_GET['projekt_id'] !== '' ? (int)$_GET['projekt_id'] : null;
-$kontoId      = isset($_GET['konto_id']) && $_GET['konto_id'] !== '' ? (int)$_GET['konto_id'] : null;
+$kontoId = isset($_GET['konto_id']) && $_GET['konto_id'] !== '' ? (int)$_GET['konto_id'] : null;
 
 // Wenn konto_id gewählt ist, aber kein projekt_id, projekt_id ableiten
 if ($kontoId && isset($kontenById[$kontoId]) && empty($projektId)) {
   $projektId = (int)($kontenById[$kontoId]['projekt_id'] ?? 0);
 }
 
-// Jahres-Auswahl:
-// 'all' oder '0' => Alle Jahre anzeigen
-// Zahl => genau dieses Jahr
-// Standardmäßig: das neueste Jahr mit Buchungen (z.B. 2023)
-$selectedYear = null;
-if (isset($_GET['jahr'])) {
+// Jahres-Auswahl (unterstützt Mehrfachauswahl via Checkboxen):
+$selectedYears = [];
+if (isset($_GET['jahre'])) {
+  if (is_array($_GET['jahre'])) {
+    $selectedYears = array_values(array_unique(array_filter(array_map('intval', $_GET['jahre']), fn($y) => $y > 0)));
+  } elseif (is_string($_GET['jahre']) && trim($_GET['jahre']) !== '') {
+    $parts = explode(',', $_GET['jahre']);
+    $selectedYears = array_values(array_unique(array_filter(array_map('intval', $parts), fn($y) => $y > 0)));
+  }
+} elseif (isset($_GET['jahr'])) {
   if ($_GET['jahr'] === 'all' || $_GET['jahr'] === '0') {
-    $selectedYear = 0;
+    $selectedYears = []; // Alle Jahre
   } else {
-    $selectedYear = (int)$_GET['jahr'];
+    $y = (int)$_GET['jahr'];
+    if ($y > 0) $selectedYears = [$y];
   }
 } else {
-  $selectedYear = !empty($dbYears) ? $dbYears[0] : $currentCalYear;
+  // Standardmäßig: das relevanteste Einzeljahr mit Buchungen für dieses Projekt (z.B. 2023), strikt jahr-spezifisch
+  $defaultY = !empty($dbYears) ? $dbYears[0] : $currentCalYear;
+  $selectedYears = [$defaultY];
 }
+
+// Wenn genau 1 Jahr gewählt ist, für Einzeljahr-Features merken:
+$selectedYear = (count($selectedYears) === 1) ? $selectedYears[0] : 0;
 
 // Monats-Auswahl:
 $selectedMonth = isset($_GET['monat']) && $_GET['monat'] !== '' && $_GET['monat'] !== 'all' ? (int)$_GET['monat'] : 0;
@@ -347,6 +432,10 @@ $splitByDescs = isset($_GET['split']) && $_GET['split'] === '1';
 if (!function_exists('buildKontoUrl')) {
   function buildKontoUrl(array $overrides = []): string {
     $q = $_GET;
+    // Wenn nicht im Portfolio-Modus und kein projekt_id override, aktives projekt_id sichern
+    if (!isset($overrides['projekt_id']) && !isset($q['projekt_id']) && !empty($GLOBALS['current_active_pid'])) {
+      $q['projekt_id'] = $GLOBALS['current_active_pid'];
+    }
     foreach ($overrides as $k => $v) {
       if ($v === null || $v === '') {
         unset($q[$k]);
@@ -354,7 +443,12 @@ if (!function_exists('buildKontoUrl')) {
         $q[$k] = $v;
       }
     }
-    if (isset($overrides['jahr']) || isset($overrides['monat']) || isset($overrides['projekt_id']) || isset($overrides['konto_id']) || isset($overrides['match_status'])) {
+    if (isset($overrides['jahre']) || isset($overrides['jahr'])) {
+      if (isset($overrides['jahre'])) unset($q['jahr']);
+      if (isset($overrides['jahr'])) unset($q['jahre']);
+      unset($q['page']);
+    }
+    if (isset($overrides['monat']) || isset($overrides['projekt_id']) || isset($overrides['konto_id']) || isset($overrides['match_status'])) {
       unset($q['page']);
     }
     return '?' . http_build_query($q);
@@ -397,10 +491,13 @@ if ($kontoId) {
   $types .= "ii";
 }
 
-if ($selectedYear > 0) {
-  $where[] = "YEAR(k.buchungsdatum) = ?";
-  $params[] = $selectedYear;
-  $types .= "i";
+if (!empty($selectedYears)) {
+  $inY = implode(",", array_fill(0, count($selectedYears), "?"));
+  $where[] = "YEAR(k.buchungsdatum) IN ($inY)";
+  foreach ($selectedYears as $yVal) {
+    $params[] = (int)$yVal;
+    $types .= "i";
+  }
 }
 
 if ($selectedMonth >= 1 && $selectedMonth <= 12) {
@@ -606,35 +703,39 @@ $monthShort = [
   9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Dez'
 ];
 
-if ($selectedYear > 0) {
-  $mWhere = [];
-  $mParams = [];
-  $mTypes = "";
-  if ($kontoId) {
-    $mWhere[] = "k.konto_id = ?";
-    $mParams[] = $kontoId;
-    $mTypes .= "i";
-  } elseif ($projektId) {
-    $mWhere[] = "(k.liegenschaft_id = ? OR k.projekt_id = ?)";
-    $mParams[] = $projektId;
-    $mParams[] = $projektId;
-    $mTypes .= "ii";
-  }
-  $mWhere[] = "YEAR(k.buchungsdatum) = ?";
-  $mParams[] = $selectedYear;
+$mWhere = [];
+$mParams = [];
+$mTypes = "";
+if ($kontoId) {
+  $mWhere[] = "k.konto_id = ?";
+  $mParams[] = $kontoId;
   $mTypes .= "i";
+} elseif ($projektId) {
+  $mWhere[] = "(k.liegenschaft_id = ? OR k.projekt_id = ?)";
+  $mParams[] = $projektId;
+  $mParams[] = $projektId;
+  $mTypes .= "ii";
+}
+if (!empty($selectedYears)) {
+  $inY = implode(",", array_fill(0, count($selectedYears), "?"));
+  $mWhere[] = "YEAR(k.buchungsdatum) IN ($inY)";
+  foreach ($selectedYears as $yVal) {
+    $mParams[] = (int)$yVal;
+    $mTypes .= "i";
+  }
+}
 
-  $mSql = "SELECT MONTH(k.buchungsdatum) AS m,
-                  COUNT(*) AS cnt,
-                  COALESCE(SUM(CASE WHEN k.betrag > 0 THEN k.betrag ELSE 0 END),0) AS einnahmen,
-                  COALESCE(SUM(CASE WHEN k.betrag < 0 THEN k.betrag ELSE 0 END),0) AS ausgaben,
-                  COALESCE(SUM(k.betrag),0) AS saldo,
-                  COALESCE(SUM(CASE WHEN k.wohnung_id > 0 THEN 1 ELSE 0 END),0) AS matched_cnt,
-                  COALESCE(SUM(CASE WHEN (k.wohnung_id IS NULL OR k.wohnung_id = 0) AND k.betrag > 0 THEN 1 ELSE 0 END),0) AS open_cnt
-           FROM liegenschafts_konto k
-           WHERE " . implode(" AND ", $mWhere) . "
-           GROUP BY MONTH(k.buchungsdatum)
-           ORDER BY m ASC";
+$mSql = "SELECT MONTH(k.buchungsdatum) AS m,
+                COUNT(*) AS cnt,
+                COALESCE(SUM(CASE WHEN k.betrag > 0 THEN k.betrag ELSE 0 END),0) AS einnahmen,
+                COALESCE(SUM(CASE WHEN k.betrag < 0 THEN k.betrag ELSE 0 END),0) AS ausgaben,
+                COALESCE(SUM(k.betrag),0) AS saldo,
+                COALESCE(SUM(CASE WHEN k.wohnung_id > 0 THEN 1 ELSE 0 END),0) AS matched_cnt,
+                COALESCE(SUM(CASE WHEN (k.wohnung_id IS NULL OR k.wohnung_id = 0) AND k.betrag > 0 THEN 1 ELSE 0 END),0) AS open_cnt
+         FROM liegenschafts_konto k"
+       . ($mWhere ? " WHERE " . implode(" AND ", $mWhere) : "") . "
+         GROUP BY MONTH(k.buchungsdatum)
+         ORDER BY m ASC";
   $mStmt = $mysqli->prepare($mSql);
   if ($mParams) $mStmt->bind_param($mTypes, ...$mParams);
   $mStmt->execute();
@@ -643,10 +744,10 @@ if ($selectedYear > 0) {
     $monthlySummary[(int)$mr['m']] = $mr;
   }
   $mStmt->close();
-}
 
-$cols = "k.id, k.liegenschaft_id, k.projekt_id, k.buchungsdatum, k.betrag, k.beschreibung, k.kategorie, k.zahlungsart, k.wohnung_label, k.wohnung_id, k.mieter_id, 
+$cols = "k.id, k.liegenschaft_id, k.projekt_id, k.konto_id, k.buchungsdatum, k.betrag, k.beschreibung, k.kategorie, k.zahlungsart, k.wohnung_label, k.wohnung_id, k.mieter_id, 
          w.name as wohnung_name, p.name as projekt_name,
+         COALESCE(kk.iban, '') as konto_iban, COALESCE(kk.name, '') as konto_name, COALESCE(kk.bank, '') as konto_bank,
          COALESCE(NULLIF(wm.mieter_name,''), b.name, k.wohnung_label) as mieter_display_name";
 
 $orderCol = ($sort === 'id') ? 'k.id' : (($sort === 'buchungsdatum') ? 'k.buchungsdatum' : 'k.' . $sort);
@@ -654,6 +755,7 @@ $listSql = "SELECT $cols FROM liegenschafts_konto k
             LEFT JOIN wohnungen w ON k.wohnung_id = w.id
             LEFT JOIN objekte o ON w.objekt_id = o.id
             LEFT JOIN projekte p ON (k.liegenschaft_id = p.id OR k.projekt_id = p.id OR o.projekt_id = p.id)
+            LEFT JOIN kv_konten kk ON (k.konto_id = kk.id OR (k.konto_id IS NULL AND (k.liegenschaft_id = kk.liegenschaft_id OR k.projekt_id = kk.projekt_id)))
             LEFT JOIN benutzer b ON k.mieter_id = b.id
             LEFT JOIN wohnung_mieter wm ON (wm.wohnung_id = k.wohnung_id AND wm.status = 'aktiv')
             " . $whereSql . " 
@@ -709,7 +811,7 @@ $st->close();
 
 /* Wohnungen & Mieter für Dropdowns & Zuweisung laden */
 $allWohnungen = [];
-$wRes = $mysqli->query("SELECT w.id, w.name, o.projekt_id, p.name AS projekt_name 
+$wRes = $mysqli->query("SELECT w.id, w.name as wohnung_name, o.id as objekt_id, o.name as objekt_name, o.projekt_id, p.name AS projekt_name 
                         FROM wohnungen w 
                         LEFT JOIN objekte o ON w.objekt_id = o.id 
                         LEFT JOIN projekte p ON o.projekt_id = p.id 
@@ -722,54 +824,51 @@ $allMieter = [];
 $mRes = $mysqli->query("SELECT wm.id AS wm_id, wm.wohnung_id, wm.benutzer_id, wm.mieter_name, b.name AS benutzer_name 
                         FROM wohnung_mieter wm 
                         LEFT JOIN benutzer b ON wm.benutzer_id = b.id 
-                        ORDER BY wm.mieter_name ASC, b.name ASC");
+                        ORDER BY COALESCE(b.name, wm.mieter_name) ASC");
 if ($mRes) {
   while ($rw = $mRes->fetch_assoc()) $allMieter[] = $rw;
 }
 ?>
-<link rel="stylesheet" href="<?= htmlspecialchars(url('tools/konto_verwaltung/style.css')) ?>">
-
+<link rel="stylesheet" href="<?= htmlspecialchars(url('tools/konto_verwaltung/style.css')) ?>?v=<?= filemtime(__DIR__ . '/style.css') ?>">
 <div class="konto-container">
-  <header class="kv-header" style="display:flex;gap:1rem;justify-content:space-between;align-items:center;margin:8px 0 16px;flex-wrap:wrap;">
-    <div>
-      <h2 style="margin:0 0 4px 0;">🏦 Liegenschafts-Buchhaltung &amp; Kontoauszug</h2>
-      <div style="font-size:13px; color:#64748b;">Bankkonten je Liegenschaft, Jahresansicht, Zahlungsabgleich und Zuordnung</div>
+  <header class="kv-header">
+    <div class="kv-header-title">
+      <h2>🏦 Liegenschafts-Buchhaltung &amp; Bankkonto</h2>
+      <p>Bankkonten je Liegenschaft &bull; Jahresansicht &bull; Zahlungsabgleich &bull; Mieter-Zuordnung</p>
     </div>
-    <div class="kv-actions" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;">
-      <a class="btn" href="<?= htmlspecialchars(url('tools/konto_verwaltung/import.php')) ?>" style="background:#0284c7;color:#fff;">📂 CSV importieren</a>
-      
-      <button type="button" class="btn" onclick="openKontenModal()" style="background:#0d9488;color:#fff;border:none;cursor:pointer;">
-        🏛️ Bankkonten verwalten
-      </button>
-
+    <div class="kv-actions">
+      <a class="btn btn-primary" href="<?= htmlspecialchars(url('tools/konto_verwaltung/import.php')) ?>">📂 CSV importieren</a>
+      <button type="button" class="btn btn-teal" onclick="openKontenModal()">🏛️ Bankkonten verwalten</button>
       <form method="post" style="margin:0;display:inline;">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="run_auto_match">
         <input type="hidden" name="filter_projekt_id" value="<?= (int)($projektId ?: 0) ?>">
-        <button type="submit" class="btn" style="background:#10b981;color:#fff;border:none;cursor:pointer;" title="Durchsucht alle Buchungstexte nach bekannten Mietern und Wohnungen">
+        <button type="submit" class="btn btn-success" title="Durchsucht alle Buchungstexte nach bekannten Mietern und Wohnungen">
           ⚡ Auto-Match starten
         </button>
       </form>
-
-      <a class="btn" href="<?= htmlspecialchars(url('tools/mietkontrolle/index.php') . '?' . http_build_query(['projekt_id' => $projektId, 'jahr' => $selectedYear ?: date('Y')])) ?>" style="background:#6366f1;color:#fff;">
-        💰 Zur Mietkontrolle (<?= $selectedYear ?: date('Y') ?>)
+      <a class="btn btn-indigo" href="<?= htmlspecialchars(url('tools/mietkontrolle/index.php') . '?' . http_build_query(['projekt_id' => $projektId, 'jahr' => $selectedYear ?: (!empty($selectedYears) ? $selectedYears[0] : date('Y'))])) ?>">
+        💰 Zur Mietkontrolle (<?= $selectedYear ?: (!empty($selectedYears) ? $selectedYears[0] : date('Y')) ?>)
       </a>
-
-      <a class="btn secondary" href="<?= htmlspecialchars(url('tools/konto_verwaltung/index.php')) ?>">⟲ Zurücksetzen</a>
+      <a class="btn" href="<?= htmlspecialchars(url('tools/liegenschaftsabrechnung/index.php') . '?' . http_build_query(['projekt_id' => $projektId, 'jahr' => $selectedYear ?: (!empty($selectedYears) ? $selectedYears[0] : date('Y'))])) ?>" style="background:#7c3aed; color:#fff; border-color:#6d28d9; font-weight:600;">
+        📑 Liegenschaftsabrechnung (<?= $selectedYear ?: (!empty($selectedYears) ? $selectedYears[0] : date('Y')) ?>)
+      </a>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars(url('tools/konto_verwaltung/index.php')) ?>">⟲ Zurücksetzen</a>
     </div>
   </header>
 
   <?php if ($flash): ?>
-    <div class="card" style="background:#f4fffa;border-left:4px solid #1abc9c;margin-bottom:12px;padding:12px 16px;font-weight:600;">
+    <div style="background:#f0fdf4; border-left:4px solid #16a34a; border-radius:8px; padding:12px 16px; margin-bottom:14px; font-weight:600; color:#166534;">
       <?= htmlspecialchars($flash) ?>
     </div>
   <?php endif; ?>
   <?php if (!empty($kv_flash)): ?>
-    <div class="card" style="background:#f0fdf4;border-left:4px solid #22c55e;margin-bottom:12px;padding:12px 16px;font-weight:600;color:#15803d;">
+    <div style="background:#f0fdf4; border-left:4px solid #16a34a; border-radius:8px; padding:12px 16px; margin-bottom:14px; font-weight:600; color:#166534;">
       <?= htmlspecialchars($kv_flash) ?>
     </div>
   <?php endif; ?>
 
-  <!-- Liegenschafts- und Bankkonto Status-Banner -->
+  <!-- Liegenschafts- und Bankkonto Hero-Card -->
   <?php 
     $activeAcc = null;
     if ($kontoId && isset($kontenById[$kontoId])) {
@@ -778,151 +877,207 @@ if ($mRes) {
       $activeAcc = $kontenByProj[$projektId];
     }
   ?>
-  <div class="kv-account-banner" style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #0284c7; border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-    <div>
+  <div class="kv-hero-card">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <form method="get" id="quickProjForm" style="margin:0; display:flex; align-items:center; gap:10px;">
+        <label for="hero_proj" style="font-size:12px; font-weight:800; color:#334155; text-transform:uppercase; letter-spacing:0.5px;">Liegenschaft:</label>
+        <select id="hero_proj" name="projekt_id" class="kv-hero-select" onchange="document.getElementById('quickProjForm').submit()">
+          <?php foreach ($projekte as $p): 
+            $pidVal = (int)$p['id'];
+            $isSel = (!$isPortfolioOverview && $projektId === $pidVal);
+          ?>
+            <option value="<?= $pidVal ?>" <?= $isSel ? 'selected' : '' ?>>
+              🏠 <?= htmlspecialchars($p['name']) ?>
+            </option>
+          <?php endforeach; ?>
+          <option disabled>──────────────────────────</option>
+          <option value="all" <?= $isPortfolioOverview ? 'selected' : '' ?>>
+            🌐 Portfolio-Gesamtansicht (Alle Liegenschaften)
+          </option>
+        </select>
+        <?php foreach ($selectedYears as $sy): ?>
+          <input type="hidden" name="jahre[]" value="<?= (int)$sy ?>">
+        <?php endforeach; ?>
+        <?php if (empty($selectedYears)): ?>
+          <input type="hidden" name="jahr" value="all">
+        <?php endif; ?>
+        <?php if ($selectedMonth > 0): ?>
+          <input type="hidden" name="monat" value="<?= $selectedMonth ?>">
+        <?php endif; ?>
+      </form>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
       <?php if ($activeAcc): ?>
-        <div style="font-size:11px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">Aktives Liegenschafts-Bankkonto:</div>
-        <div style="font-size:15px; font-weight:800; color:#0f172a; margin-top:2px;">
-          <?= htmlspecialchars($activeAcc['name']) ?> 
-          <span style="font-size:13px; font-weight:600; color:#475569;">(<?= htmlspecialchars($activeAcc['bank'] ?: 'Bank') ?>)</span>
-        </div>
-        <div style="font-size:13px; color:#334155; font-family:monospace; margin-top:3px;">
-          IBAN: <strong><?= htmlspecialchars($activeAcc['iban'] ? chunk_split($activeAcc['iban'], 4, ' ') : '— Noch keine IBAN hinterlegt —') ?></strong>
-          <?php if (!empty($activeAcc['projekt_name'])): ?>
-            <span style="color:#64748b; font-family:sans-serif; margin-left:12px;">🏠 Liegenschaft: <?= htmlspecialchars($activeAcc['projekt_name']) ?></span>
-          <?php endif; ?>
+        <div class="kv-bank-info-box">
+          <div style="font-size:22px;">🏛️</div>
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">
+              <?= htmlspecialchars($activeAcc['bank'] ?: 'Bankkonto') ?> &bull; <?= htmlspecialchars($activeAcc['name']) ?>
+            </div>
+            <div class="kv-bank-iban"><?= htmlspecialchars($activeAcc['iban'] ? chunk_split($activeAcc['iban'], 4, ' ') : '— Noch keine IBAN hinterlegt —') ?></div>
+          </div>
         </div>
       <?php elseif ($projektId): ?>
-        <div style="font-size:11px; font-weight:700; color:#eab308; text-transform:uppercase;">Liegenschaft ohne hinterlegtes Bankkonto:</div>
-        <div style="font-size:14px; font-weight:700; color:#0f172a; margin-top:2px;">
-          🏠 <?= htmlspecialchars($projById[$projektId] ?? 'Liegenschaft #'.$projektId) ?>
-        </div>
-        <div style="font-size:12px; color:#64748b; margin-top:2px;">
-          Für diese Liegenschaft wurde in <em>kv_konten</em> noch kein Bankkonto eingetragen.
-        </div>
-      <?php else: ?>
-        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Liegenschafts-Auswahl:</div>
-        <div style="font-size:14px; font-weight:700; color:#0f172a; margin-top:2px;">
-          🌐 Alle Liegenschaften &amp; Konten (Übersicht)
-        </div>
-        <div style="font-size:12px; color:#64748b; margin-top:2px;">
-          Wähle unten ein Projekt oder ein Konto, um gezielt die Buchungen einer einzelnen Liegenschaft zu prüfen.
+        <div class="kv-bank-info-box" style="border-color:#fef08a; background:#fefce8;">
+          <span style="font-size:13px; font-weight:600; color:#854d0e;">⚠️ Kein Bankkonto für diese Liegenschaft hinterlegt</span>
         </div>
       <?php endif; ?>
-    </div>
-    <div>
-      <button type="button" class="btn secondary" onclick="openKontenModal()" style="font-size:12px; padding:6px 12px; border-radius:6px;">
-        ⚙️ Kontodaten bearbeiten
+      <button type="button" class="btn btn-secondary" onclick="openKontenModal()" style="font-size:12px;">
+        ⚙️ Bankkonten bearbeiten
       </button>
     </div>
   </div>
 
-  <!-- Jahres-Navigation & Jahres-Tabs Bar -->
-  <div class="kv-year-tabs" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px 16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span style="font-weight:700; font-size:13px; color:#475569; display:flex; align-items:center; gap:4px;">
-        📅 Jahr:
-      </span>
-      <?php foreach ($availableYears as $yr): 
-        $isActiveYr = ($selectedYear === $yr);
-      ?>
-        <a href="<?= htmlspecialchars(buildKontoUrl(['jahr' => $yr, 'monat' => null])) ?>" 
-           style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none; transition:all 0.15s ease; <?= $isActiveYr ? 'background:#2563eb; color:#fff; box-shadow:0 2px 4px rgba(37,99,235,0.3);' : 'background:#f1f5f9; color:#475569;' ?>">
-          <?= $yr ?>
-        </a>
-      <?php endforeach; ?>
-      <a href="<?= htmlspecialchars(buildKontoUrl(['jahr' => 'all', 'monat' => null])) ?>" 
-         style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none; transition:all 0.15s ease; <?= ($selectedYear === 0) ? 'background:#0f172a; color:#fff;' : 'background:#f1f5f9; color:#475569;' ?>">
-        🌐 Alle Jahre
+  <?php if ($isPortfolioOverview): ?>
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 18px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div style="font-size:14px; font-weight:800; color:#1e40af; display:flex; align-items:center; gap:6px;">
+          🌐 Portfolio-Gesamtansicht aktiv (Alle Liegenschaften &amp; Konten)
+        </div>
+        <div style="font-size:12px; color:#3b82f6; margin-top:2px;">
+          Du siehst hier alle Konten und Buchungen summiert für das Monats- und Jahres-Cockpit.
+        </div>
+      </div>
+      <a href="<?= htmlspecialchars(buildKontoUrl(['projekt_id' => ($_SESSION['current_project_id'] ?? 3)])) ?>" class="btn btn-primary" style="font-size:12px; padding:6px 14px; background:#2563eb;">
+        🏠 Zurück zur Projektarbeit (<?= htmlspecialchars($projById[$_SESSION['current_project_id'] ?? 3] ?? 'Projekt') ?>)
       </a>
     </div>
+  <?php endif; ?>
 
-    <?php if ($selectedYear > 0): ?>
-      <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
-        <span style="font-size:12px; font-weight:600; color:#64748b; margin-right:4px;">Monat:</span>
-        <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => 'all'])) ?>" 
-           style="padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; <?= ($selectedMonth === 0) ? 'background:#3b82f6; color:#fff;' : 'background:#f8fafc; color:#64748b; border:1px solid #e2e8f0;' ?>">
-          Alle
+  <!-- Jahres-Navigation & Jahres-Checkboxen (Mehrfachauswahl) -->
+  <div class="kv-nav-strip">
+    <form method="get" id="yearsNavForm" class="kv-years-form" style="margin:0;">
+      <?php if ($projektId): ?>
+        <input type="hidden" name="projekt_id" value="<?= (int)$projektId ?>">
+      <?php endif; ?>
+      <?php if ($kontoId): ?>
+        <input type="hidden" name="konto_id" value="<?= (int)$kontoId ?>">
+      <?php endif; ?>
+      <?php if ($selectedMonth > 0): ?>
+        <input type="hidden" name="monat" value="<?= (int)$selectedMonth ?>">
+      <?php endif; ?>
+      <?php if ($suchtext !== ''): ?>
+        <input type="hidden" name="beschreibung" value="<?= htmlspecialchars($suchtext) ?>">
+      <?php endif; ?>
+      <?php if ($matchStatus !== 'all'): ?>
+        <input type="hidden" name="match_status" value="<?= htmlspecialchars($matchStatus) ?>">
+      <?php endif; ?>
+
+      <span class="kv-years-label">📅 Jahre:</span>
+      <?php foreach ($availableYears as $yr): 
+        $isChecked = in_array($yr, $selectedYears, true);
+      ?>
+        <label class="kv-year-chip <?= $isChecked ? 'active' : '' ?>" title="Jahr <?= $yr ?> auswählen / abwählen">
+          <input type="checkbox" name="jahre[]" value="<?= $yr ?>" <?= $isChecked ? 'checked' : '' ?> onchange="document.getElementById('yearsNavForm').submit()">
+          <span><?= $yr ?></span>
+        </label>
+      <?php endforeach; ?>
+
+      <button type="button" class="kv-year-btn <?= empty($selectedYears) ? 'active' : '' ?>" onclick="selectAllYearsNav()" title="Alle Buchungsjahre anzeigen">
+        🌐 Alle Jahre
+      </button>
+    </form>
+
+    <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+      <span style="font-size:12px; font-weight:700; color:#64748b; margin-right:4px;">Monat:</span>
+      <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => 'all'])) ?>" 
+         class="kv-mo-pill <?= ($selectedMonth === 0) ? 'active' : '' ?>">
+        Alle
+      </a>
+      <?php for ($m = 1; $m <= 12; $m++): 
+        $isActiveM = ($selectedMonth === $m);
+        $hasData = isset($monthlySummary[$m]) && $monthlySummary[$m]['cnt'] > 0;
+      ?>
+        <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => $m])) ?>" 
+           class="kv-mo-pill <?= $isActiveM ? 'active' : '' ?> <?= $hasData ? 'has-data' : '' ?>"
+           title="<?= $monthNames[$m] ?>: <?= $hasData ? $monthlySummary[$m]['cnt'].' Buchungen' : 'Keine Buchungen' ?>">
+          <?= $monthShort[$m] ?>
         </a>
-        <?php for ($m = 1; $m <= 12; $m++): 
-          $isActiveM = ($selectedMonth === $m);
-          $hasData = isset($monthlySummary[$m]) && $monthlySummary[$m]['cnt'] > 0;
-        ?>
-          <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => $m])) ?>" 
-             style="padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; <?= $isActiveM ? 'background:#2563eb; color:#fff;' : ($hasData ? 'background:#e0f2fe; color:#0369a1;' : 'background:#f8fafc; color:#94a3b8;') ?>">
-            <?= $monthShort[$m] ?>
-          </a>
-        <?php endfor; ?>
-      </div>
-    <?php endif; ?>
+      <?php endfor; ?>
+    </div>
   </div>
 
-  <!-- Stats + KPIs Kopf (pro gewählte Periode) -->
-  <section class="kv-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin:12px 0 16px;">
-    <div class="stat" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-      <div class="stat-label" style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">
-        <?= $selectedYear ? 'Buchungen ' . $selectedYear : 'Buchungen Gesamt' ?>
+  <?php
+    if (empty($selectedYears)) {
+      $periodLabel = 'Gesamt';
+    } elseif (count($selectedYears) === 1) {
+      $periodLabel = (string)$selectedYears[0];
+    } else {
+      $periodLabel = implode(', ', $selectedYears);
+    }
+  ?>
+
+  <!-- KPI Grid (Executive Dashboard) -->
+  <div class="kv-kpi-grid">
+    <div class="kv-kpi-card">
+      <div class="kv-kpi-title">Buchungen <?= htmlspecialchars($periodLabel) ?></div>
+      <div class="kv-kpi-val" style="color:#0f172a;">
+        <?= number_format($totalMatch, 0, ',', "'") ?> 
+        <span style="font-size:12px; color:#94a3b8; font-weight:500;">/ <?= number_format($statTotal, 0, ',', "'") ?></span>
       </div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:#0f172a;margin-top:4px;">
-        <?= number_format($totalMatch, 0, ',', "'") ?> <span style="font-size:12px;color:#94a3b8;font-weight:500;">/ <?= number_format($statTotal, 0, ',', "'") ?></span>
-      </div>
+      <div style="font-size:12px; color:#64748b; margin-top:2px;">Transaktionen im Auszug</div>
     </div>
 
-    <div class="stat" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-      <div class="stat-label" style="font-size:12px;color:#16a34a;font-weight:700;text-transform:uppercase;">Einnahmen (+)</div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:#16a34a;margin-top:4px;">
-        +<?= number_format($totalEinnahmen, 2, '.', "'") ?> <span style="font-size:12px;font-weight:500;">CHF</span>
+    <div class="kv-kpi-card">
+      <div class="kv-kpi-title" style="color:#16a34a;">Einnahmen (+)</div>
+      <div class="kv-kpi-val" style="color:#16a34a;">
+        +<?= number_format($totalEinnahmen, 2, '.', "'") ?> <span style="font-size:13px; font-weight:500;">CHF</span>
       </div>
+      <div style="font-size:12px; color:#16a34a; margin-top:2px;">Mieteingänge &amp; Gutschriften</div>
     </div>
 
-    <div class="stat" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-      <div class="stat-label" style="font-size:12px;color:#dc2626;font-weight:700;text-transform:uppercase;">Ausgaben (-)</div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:#dc2626;margin-top:4px;">
-        <?= number_format($totalAusgaben, 2, '.', "'") ?> <span style="font-size:12px;font-weight:500;">CHF</span>
+    <div class="kv-kpi-card">
+      <div class="kv-kpi-title" style="color:#dc2626;">Ausgaben (-)</div>
+      <div class="kv-kpi-val" style="color:#dc2626;">
+        <?= number_format($totalAusgaben, 2, '.', "'") ?> <span style="font-size:13px; font-weight:500;">CHF</span>
       </div>
+      <div style="font-size:12px; color:#dc2626; margin-top:2px;">Zahlungen &amp; Belastungen</div>
     </div>
 
-    <div class="stat" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-      <div class="stat-label" style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Saldo <?= $selectedYear ?: 'Periode' ?></div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:<?= $totalSum >= 0 ? '#16a34a' : '#dc2626' ?>;margin-top:4px;">
-        <?= ($totalSum >= 0 ? '+' : '') . number_format($totalSum, 2, '.', "'") ?> <span style="font-size:12px;font-weight:500;">CHF</span>
+    <div class="kv-kpi-card">
+      <div class="kv-kpi-title">Saldo <?= htmlspecialchars($periodLabel) ?></div>
+      <div class="kv-kpi-val" style="color:<?= $totalSum >= 0 ? '#16a34a' : '#dc2626' ?>;">
+        <?= ($totalSum >= 0 ? '+' : '') . number_format($totalSum, 2, '.', "'") ?> <span style="font-size:13px; font-weight:500;">CHF</span>
       </div>
+      <div style="font-size:12px; color:#64748b; margin-top:2px;">Netto-Ergebnis der Liegenschaft</div>
     </div>
 
-    <a href="<?= htmlspecialchars(buildKontoUrl(['match_status' => 'matched'])) ?>" class="stat" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 16px;text-decoration:none;display:block;">
-      <div class="stat-label" style="font-size:12px;color:#166534;font-weight:700;text-transform:uppercase;">🟢 Zugeordnet</div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:#15803d;margin-top:4px;">
-        <?= number_format($statMatched, 0, ',', "'") ?> <span style="font-size:12px;font-weight:500;">Buchungen</span>
+    <div class="kv-kpi-card" style="display:flex; flex-direction:column; justify-content:space-between;">
+      <div class="kv-kpi-title">Zuordnungs-Status</div>
+      <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+        <a href="<?= htmlspecialchars(buildKontoUrl(['match_status' => 'matched'])) ?>" 
+           style="flex:1; padding:6px 10px; border-radius:6px; background:#dcfce7; color:#166534; border:1px solid #bbf7d0; text-decoration:none; font-weight:700; font-size:12px; text-align:center;">
+          🟢 <?= number_format($statMatched, 0, ',', "'") ?> Zugeordnet
+        </a>
+        <a href="<?= htmlspecialchars(buildKontoUrl(['match_status' => 'unmatched'])) ?>" 
+           style="flex:1; padding:6px 10px; border-radius:6px; background:#fee2e2; color:#991b1b; border:1px solid #fecaca; text-decoration:none; font-weight:700; font-size:12px; text-align:center;">
+          🔴 <?= number_format($statUnmatched, 0, ',', "'") ?> Offen
+        </a>
       </div>
-    </a>
-
-    <a href="<?= htmlspecialchars(buildKontoUrl(['match_status' => 'unmatched'])) ?>" class="stat" style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 16px;text-decoration:none;display:block;">
-      <div class="stat-label" style="font-size:12px;color:#991b1b;font-weight:700;text-transform:uppercase;">🔴 Unzugeordnet (Offen)</div>
-      <div class="stat-value" style="font-size:22px;font-weight:800;color:#dc2626;margin-top:4px;">
-        <?= number_format($statUnmatched, 0, ',', "'") ?> <span style="font-size:12px;font-weight:500;">offen</span>
-      </div>
-    </a>
-  </section>
+      <div style="font-size:11px; color:#64748b; margin-top:4px; text-align:center;">Klicken zum Filtern</div>
+    </div>
+  </div>
 
   <!-- Aufklappbare Monats-Übersicht für das gewählte Jahr -->
-  <?php if ($selectedYear > 0 && !empty($monthlySummary)): ?>
-    <details style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px; margin-bottom:16px;" <?= ($selectedMonth > 0) ? 'open' : '' ?>>
+  <?php if (!empty($monthlySummary)): ?>
+    <details style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 18px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.02);" <?= ($selectedMonth > 0) ? 'open' : '' ?>>
       <summary style="font-weight:700; font-size:14px; color:#334155; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
-        <span>📊 Monatsübersicht für das Jahr <?= $selectedYear ?> (Einnahmen, Ausgaben &amp; Saldo je Monat)</span>
-        <span style="font-size:12px; color:#64748b; font-weight:normal;">(Klicken zum Auf-/Zuklappen)</span>
+        <span>📊 Monatsübersicht (<?= htmlspecialchars($periodLabel) ?>) – Einnahmen, Ausgaben &amp; Saldo je Monat</span>
+        <span style="font-size:12px; color:#2563eb; font-weight:600;">(Klicken zum Auf-/Zuklappen ▾)</span>
       </summary>
-      <div style="overflow-x:auto; margin-top:10px;">
-        <table class="modern-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+      <div style="overflow-x:auto; margin-top:12px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
           <thead>
             <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-              <th style="padding:6px 10px; text-align:left;">Monat</th>
-              <th style="padding:6px 10px; text-align:right; color:#16a34a;">Einnahmen (+)</th>
-              <th style="padding:6px 10px; text-align:right; color:#dc2626;">Ausgaben (-)</th>
-              <th style="padding:6px 10px; text-align:right;">Saldo</th>
-              <th style="padding:6px 10px; text-align:center;">Buchungen</th>
-              <th style="padding:6px 10px; text-align:center;">Zugeordnet</th>
-              <th style="padding:6px 10px; text-align:center;">Offen</th>
-              <th style="padding:6px 10px; text-align:center;">Aktion</th>
+              <th style="padding:8px 12px; text-align:left;">Monat</th>
+              <th style="padding:8px 12px; text-align:right; color:#16a34a;">Einnahmen (+)</th>
+              <th style="padding:8px 12px; text-align:right; color:#dc2626;">Ausgaben (-)</th>
+              <th style="padding:8px 12px; text-align:right;">Saldo</th>
+              <th style="padding:8px 12px; text-align:center;">Buchungen</th>
+              <th style="padding:8px 12px; text-align:center;">Zugeordnet</th>
+              <th style="padding:8px 12px; text-align:center;">Offen</th>
+              <th style="padding:8px 12px; text-align:center;">Aktion</th>
             </tr>
           </thead>
           <tbody>
@@ -931,37 +1086,37 @@ if ($mRes) {
               $isCurM = ($selectedMonth === $m);
             ?>
               <tr style="border-bottom:1px solid #f1f5f9; <?= $isCurM ? 'background:#eff6ff;' : '' ?>">
-                <td style="padding:6px 10px; font-weight:700;">
+                <td style="padding:8px 12px; font-weight:700; color:#1e293b;">
                   <?= $monthNames[$m] ?> <?= $selectedYear ?>
                 </td>
-                <td style="padding:6px 10px; text-align:right; color:#16a34a; font-weight:600;">
+                <td style="padding:8px 12px; text-align:right; color:#16a34a; font-weight:700;">
                   <?= $mRow['einnahmen'] > 0 ? ('+' . number_format((float)$mRow['einnahmen'], 2, '.', "'")) : '—' ?>
                 </td>
-                <td style="padding:6px 10px; text-align:right; color:#dc2626; font-weight:600;">
+                <td style="padding:8px 12px; text-align:right; color:#dc2626; font-weight:700;">
                   <?= $mRow['ausgaben'] < 0 ? number_format((float)$mRow['ausgaben'], 2, '.', "'") : '—' ?>
                 </td>
-                <td style="padding:6px 10px; text-align:right; font-weight:700; color:<?= (float)$mRow['saldo'] >= 0 ? '#16a34a' : '#dc2626' ?>;">
+                <td style="padding:8px 12px; text-align:right; font-weight:700; color:<?= (float)$mRow['saldo'] >= 0 ? '#16a34a' : '#dc2626' ?>;">
                   <?= ((float)$mRow['saldo'] >= 0 ? '+' : '') . number_format((float)$mRow['saldo'], 2, '.', "'") ?>
                 </td>
-                <td style="padding:6px 10px; text-align:center; font-weight:600; color:#475569;">
+                <td style="padding:8px 12px; text-align:center; font-weight:600; color:#475569;">
                   <?= (int)$mRow['cnt'] ?>
                 </td>
-                <td style="padding:6px 10px; text-align:center;">
-                  <span style="background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">
+                <td style="padding:8px 12px; text-align:center;">
+                  <span style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700;">
                     <?= (int)$mRow['matched_cnt'] ?>
                   </span>
                 </td>
-                <td style="padding:6px 10px; text-align:center;">
+                <td style="padding:8px 12px; text-align:center;">
                   <?php if ((int)$mRow['open_cnt'] > 0): ?>
-                    <span style="background:#fee2e2; color:#991b1b; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">
+                    <span style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700;">
                       <?= (int)$mRow['open_cnt'] ?> offen
                     </span>
                   <?php else: ?>
                     <span style="color:#94a3b8;">0</span>
                   <?php endif; ?>
                 </td>
-                <td style="padding:6px 10px; text-align:center;">
-                  <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => $m])) ?>" class="btn" style="padding:2px 8px; font-size:11px; background:#e0f2fe; color:#0369a1; border:none; border-radius:4px; text-decoration:none;">
+                <td style="padding:8px 12px; text-align:center;">
+                  <a href="<?= htmlspecialchars(buildKontoUrl(['monat' => $m])) ?>" class="btn btn-secondary" style="padding:3px 10px; font-size:11px;">
                     Filtern
                   </a>
                 </td>
@@ -973,361 +1128,275 @@ if ($mRes) {
     </details>
   <?php endif; ?>
 
-  <!-- Filter -->
-  <form class="filter-box" method="get" action="" style="background:#f9fafc;border:1px solid #e7e9ef;border-radius:12px;padding:12px;margin:10px 0">
-    <input type="hidden" name="jahr" value="<?= htmlspecialchars((string)($selectedYear ?: 'all')) ?>">
+  <!-- Kompakte Filter-Leiste -->
+  <form class="kv-filter-strip" method="get" action="">
+    <?php foreach ($selectedYears as $sy): ?>
+      <input type="hidden" name="jahre[]" value="<?= (int)$sy ?>">
+    <?php endforeach; ?>
+    <?php if (empty($selectedYears)): ?>
+      <input type="hidden" name="jahr" value="all">
+    <?php endif; ?>
     <?php if ($selectedMonth > 0): ?>
       <input type="hidden" name="monat" value="<?= $selectedMonth ?>">
     <?php endif; ?>
-
-    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px,1fr));gap:.6rem">
-      <div>
-        <label for="projekt_id" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Liegenschaft / Projekt</label>
-        <select id="projekt_id" name="projekt_id" style="width:100%;" onchange="this.form.submit()">
-          <option value="">-- Alle Liegenschaften --</option>
-          <?php foreach ($projekte as $p): ?>
-            <option value="<?= (int)$p['id'] ?>" <?= ($projektId == (int)$p['id'] ? 'selected' : '') ?>>
-              <?= htmlspecialchars($p['name']) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <div>
-        <label for="konto_id" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Bankkonto</label>
-        <select id="konto_id" name="konto_id" style="width:100%;" onchange="this.form.submit()">
-          <option value="">-- Alle Konten --</option>
-          <?php foreach ($allKonten as $ak): ?>
-            <option value="<?= (int)$ak['id'] ?>" <?= ($kontoId == (int)$ak['id'] ? 'selected' : '') ?>>
-              <?= htmlspecialchars($ak['name'] . ($ak['iban'] ? ' (' . substr($ak['iban'], -8) . ')' : '')) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <div>
-        <label for="datum_von" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Datum von</label>
-        <input id="datum_von" type="date" name="datum_von" value="<?= htmlspecialchars($datumVon) ?>" style="width:100%;">
-      </div>
-
-      <div>
-        <label for="datum_bis" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Datum bis</label>
-        <input id="datum_bis" type="date" name="datum_bis" value="<?= htmlspecialchars($datumBis) ?>" style="width:100%;">
-      </div>
-
-      <div>
-        <label for="match_status" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Zuordnungs-Status</label>
-        <select id="match_status" name="match_status" style="width:100%;">
-          <option value="all">-- Alle Buchungen --</option>
-          <option value="unmatched" <?= $matchStatus==='unmatched'?'selected':'' ?>>🔴 Unzugeordnet (offen)</option>
-          <option value="matched" <?= $matchStatus==='matched'?'selected':'' ?>>🟢 Zugeordnet</option>
-        </select>
-      </div>
-
-      <div>
-        <label for="beschreibung" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Textsuche</label>
-        <input id="beschreibung" type="text" name="beschreibung" placeholder="z.B. Miete, Name..." value="<?= htmlspecialchars($suchtext) ?>" style="width:100%;">
-      </div>
-
-      <div>
-        <label for="sort" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Sortieren nach</label>
-        <select id="sort" name="sort" style="width:100%;">
-          <?php foreach ($sortable as $col): ?>
-            <option value="<?= htmlspecialchars($col) ?>" <?= $sort === $col ? 'selected' : '' ?>>
-              <?= htmlspecialchars($col) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <div>
-        <label for="dir" style="display:block; font-size:12px; font-weight:700; margin-bottom:3px;">Reihenfolge</label>
-        <select id="dir" name="dir" style="width:100%;">
-          <option value="asc"  <?= $dir==='asc'?'selected':'' ?>>aufsteigend</option>
-          <option value="desc" <?= $dir==='desc'?'selected':'' ?>>absteigend</option>
-      </div>
-    </div>
-
-    <?php if (!empty($descOptions)): ?>
-      <fieldset class="cat-fieldset" style="margin-top:.6rem">
-        <legend>Beschreibungen (Mehrfachwahl)</legend>
-        <label class="checkbox-inline"><input type="checkbox" id="desc_all"> alle/keine</label>
-        <div class="cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.4rem;margin-top:.4rem;max-height:340px;overflow:auto;">
-          <?php foreach ($descOptions as $b):
-              $checked = in_array($b, $selectedDescs, true) ? 'checked' : '';
-          ?>
-            <label class="checkbox-inline">
-              <input type="checkbox" name="beschreibungen[]" value="<?= htmlspecialchars($b) ?>" <?= $checked ?>>
-              <?= htmlspecialchars($b) ?>
-            </label>
-          <?php endforeach; ?>
-        </div>
-      </fieldset>
+    <?php if ($projektId): ?>
+      <input type="hidden" name="projekt_id" value="<?= $projektId ?>">
     <?php endif; ?>
 
-    <label class="checkbox-inline" style="margin-top:.5rem;display:inline-flex;gap:.4rem;align-items:center;">
-      <input type="checkbox" name="split" value="1" <?= $splitByDescs ? 'checked' : '' ?>>
-      Beschreibungen unten einzeln auflisten
-    </label>
+    <div class="kv-filter-row">
+      <input type="text" name="beschreibung" class="kv-search-input" placeholder="🔍 Textsuche (Mieter, Verwendungszweck, Betrag)..." value="<?= htmlspecialchars($suchtext) ?>">
+      
+      <select name="match_status" class="kv-select">
+        <option value="all">-- Alle Status --</option>
+        <option value="unmatched" <?= $matchStatus==='unmatched'?'selected':'' ?>>🔴 Nur Unzugeordnete (offen)</option>
+        <option value="matched" <?= $matchStatus==='matched'?'selected':'' ?>>🟢 Nur Zugeordnete</option>
+      </select>
 
-    <div class="actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
-      <button type="submit" class="btn">🔍 Filtern</button>
-      <a class="btn secondary" href="<?= htmlspecialchars(url('tools/konto_verwaltung/index.php')) ?>">⟲ Zurücksetzen</a>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:12px; color:#64748b; font-weight:600;">Von:</span>
+        <input type="date" name="datum_von" value="<?= htmlspecialchars($datumVon) ?>" class="kv-select" style="padding:7px 10px;">
+        <span style="font-size:12px; color:#64748b; font-weight:600;">Bis:</span>
+        <input type="date" name="datum_bis" value="<?= htmlspecialchars($datumBis) ?>" class="kv-select" style="padding:7px 10px;">
+      </div>
+
+      <select name="sort" class="kv-select">
+        <option value="buchungsdatum" <?= $sort==='buchungsdatum'?'selected':'' ?>>Sortierung: Datum</option>
+        <option value="betrag" <?= $sort==='betrag'?'selected':'' ?>>Sortierung: Betrag</option>
+        <option value="beschreibung" <?= $sort==='beschreibung'?'selected':'' ?>>Sortierung: Buchungstext</option>
+        <option value="id" <?= $sort==='id'?'selected':'' ?>>Sortierung: ID</option>
+      </select>
+
+      <select name="dir" class="kv-select">
+        <option value="desc" <?= $dir==='desc'?'selected':'' ?>>Neueste zuerst</option>
+        <option value="asc" <?= $dir==='asc'?'selected':'' ?>>Älteste zuerst</option>
+      </select>
+
+      <button type="submit" class="btn btn-primary">🔍 Filtern</button>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars(url('tools/konto_verwaltung/index.php') . ($projektId ? '?projekt_id='.$projektId : '')) ?>">⟲ Reset</a>
     </div>
+
+    <!-- Einklappbarer Bereich für Massen-Aktionen & Regex-Tools -->
+    <details class="kv-tools-accordion" style="margin-top:12px; border-top:1px solid #f1f5f9; padding-top:8px;">
+      <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#64748b;">
+        ⚙️ Massen-Aktionen &amp; Erweiterte Filter-Werkzeuge (Hier klicken zum Einblenden)
+      </summary>
+      
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-top:10px;">
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px;">
+          <span style="font-weight:700; font-size:12px; color:#334155;">Aktion für markierte Zeilen:</span>
+          
+          <input type="text" id="batch_new_cat" placeholder="Neue Kategorie" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
+          <button class="btn btn-secondary" type="button" onclick="submitBatchCat()" style="font-size:12px;">🏷️ Kategorie setzen</button>
+
+          <select id="batch_wohnung_id" style="max-width:220px; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
+            <option value="0">-- Wohnung zuweisen --</option>
+            <?php foreach ($allWohnungen as $aw): ?>
+              <option value="<?= (int)$aw['id'] ?>"><?= htmlspecialchars($aw['projekt_name'] . ' ➔ ' . $aw['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+
+          <select id="batch_mieter_id" style="max-width:180px; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
+            <option value="0">-- Mieter zuweisen --</option>
+            <?php foreach ($allMieter as $am): ?>
+              <option value="<?= (int)$am['benutzer_id'] ?>"><?= htmlspecialchars($am['mieter_name'] ?: $am['benutzer_name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+
+          <button class="btn btn-success" type="button" onclick="submitBatchAssign()" style="font-size:12px;">📌 Zuweisen</button>
+          <button class="btn btn-danger" type="button" onclick="submitBatchDelete()" style="font-size:12px;">🗑️ Löschen</button>
+        </div>
+
+        <div style="border-top:1px solid #e2e8f0; padding-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span style="font-weight:700; font-size:12px; color:#334155;">Schnell-Zuordnung (Regex):</span>
+          <input id="assign_name" type="text" name="assign_name" placeholder="Name enthält (z.B. Nieder|Kaden)" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; min-width:220px;">
+          <select id="assign_projekt_id" name="assign_projekt_id" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
+            <option value="0">-- Liegenschaft setzen --</option>
+            <?php foreach ($projekte as $p): ?>
+              <option value="<?= (int)$p['id'] ?>"><?= htmlspecialchars($p['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <label style="font-size:12px; display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+            <input type="checkbox" name="assign_regex" value="1"> Als Regex behandeln
+          </label>
+          <button class="btn btn-secondary" type="submit" name="apply_assignment" value="1" style="font-size:12px;">💾 Zuordnen</button>
+        </div>
+
+        <?php if (!empty($descOptions)): ?>
+          <details style="margin-top:10px;">
+            <summary style="font-size:12px; color:#64748b; font-weight:600; cursor:pointer;">Top-Beschreibungen Mehrfachfilter anzeigen (<?= count($descOptions) ?> Filter)</summary>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:6px; max-height:200px; overflow-y:auto; margin-top:8px; padding:8px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; font-size:11px;">
+              <?php foreach ($descOptions as $b):
+                $checked = in_array($b, $selectedDescs, true) ? 'checked' : '';
+              ?>
+                <label style="display:flex; align-items:center; gap:5px;">
+                  <input type="checkbox" name="beschreibungen[]" value="<?= htmlspecialchars($b) ?>" <?= $checked ?>>
+                  <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= htmlspecialchars($b) ?></span>
+                </label>
+              <?php endforeach; ?>
+            </div>
+          </details>
+        <?php endif; ?>
+      </div>
+    </details>
   </form>
 
-  <!-- Toolbar: Batch-Aktionen -->
-  <div class="toolbar" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:10px 0">
-    <form method="post">
-      <input type="hidden" name="do" value="set_cat">
-      <span class="muted">Auswahl:</span>
-      <input type="text" name="new_cat" placeholder="Neue Kategorie">
-      <button class="btn" type="submit">🏷️ Kategorie setzen</button>
-      <div id="ids_holder_cat"></div>
-    </form>
+  <!-- Versteckte Helper-Formulare für Batch-Aktionen -->
+  <form id="form_batch_cat" method="post" style="display:none;">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="set_cat">
+    <input type="hidden" name="new_cat" id="hidden_batch_cat" value="">
+    <div id="ids_holder_cat"></div>
+  </form>
 
-    <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      <input type="hidden" name="do" value="assign_proj_whg">
-      <select name="assign_wohnung_id" style="max-width:240px;">
-        <option value="0">-- Wohnung zuweisen --</option>
-        <?php foreach ($allWohnungen as $aw): ?>
-          <option value="<?= (int)$aw['id'] ?>">
-            <?= htmlspecialchars($aw['projekt_name'] . ' ➔ ' . $aw['name']) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
+  <form id="form_batch_assign" method="post" style="display:none;">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="assign_proj_whg">
+    <input type="hidden" name="assign_wohnung_id" id="hidden_batch_wid" value="0">
+    <input type="hidden" name="assign_mieter_id" id="hidden_batch_mid" value="0">
+    <div id="ids_holder_assign"></div>
+  </form>
 
-      <select name="assign_mieter_id" style="max-width:200px;">
-        <option value="0">-- Mieter zuweisen --</option>
-        <?php foreach ($allMieter as $am): 
-          $dName = trim($am['mieter_name'] ?: $am['benutzer_name']);
+  <form id="form_batch_delete" method="post" style="display:none;">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="delete_rows">
+    <div id="ids_holder_del"></div>
+  </form>
+
+  <!-- Moderne Buchungs-Tabelle -->
+  <div class="kv-table-container">
+    <table class="kv-table">
+      <thead>
+        <tr>
+          <th style="width:34px; text-align:center;"><input type="checkbox" class="select_all"></th>
+          <th style="width:95px;">Datum</th>
+          <th style="width:140px; text-align:right;">Betrag</th>
+          <th>Buchungstext / Beschreibung</th>
+          <th style="width:125px;">Kategorie</th>
+          <th style="min-width:220px;">Zuweisung &amp; Mieter</th>
+          <th style="width:190px;">Konto / IBAN</th>
+          <?php if (!$projektId): ?>
+            <th style="width:150px;">Liegenschaft</th>
+          <?php endif; ?>
+          <th style="width:80px; text-align:center;">Aktion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($rows)): ?>
+          <tr>
+            <td colspan="<?= $projektId ? 8 : 9 ?>" style="text-align:center; padding:40px; color:#94a3b8; font-size:14px;">
+              Keine Buchungen für die gewählte Filter-Einstellung gefunden.
+            </td>
+          </tr>
+        <?php else: foreach ($rows as $r): 
+          $betrag = (float)$r['betrag'];
+          $isPos = $betrag >= 0;
+
+          // Intelligente Kategorie
+          $rawKat = trim((string)($r['kategorie'] ?? ''));
+          if ($rawKat !== '') {
+              $displayKat = $rawKat;
+          } else {
+              if ($isPos) {
+                  $displayKat = 'Miete';
+              } else {
+                  $lDesc = mb_strtolower($r['beschreibung']);
+                  if (str_contains($lDesc, 'gebühr') || str_contains($lDesc, 'spesen') || str_contains($lDesc, 'abschluss')) {
+                      $displayKat = 'Bankgebühren';
+                  } elseif (str_contains($lDesc, 'übertrag') || str_contains($lDesc, 'kontoübertrag')) {
+                      $displayKat = 'Kontoübertrag';
+                  } elseif (str_contains($lDesc, 'versicherung')) {
+                      $displayKat = 'Versicherung';
+                  } elseif (str_contains($lDesc, 'ew ') || str_contains($lDesc, 'strom') || str_contains($lDesc, 'energie')) {
+                      $displayKat = 'Nebenkosten';
+                  } else {
+                      $displayKat = 'Aufwand';
+                  }
+              }
+          }
         ?>
-          <option value="<?= (int)$am['benutzer_id'] ?>">
-            <?= htmlspecialchars($dName) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-
-      <button class="btn" type="submit" style="background:#059669;color:#fff;">📌 Für Auswahl speichern</button>
-      <div id="ids_holder_assign"></div>
-    </form>
-
-    <form method="post" onsubmit="return confirm('Ausgewählte Einträge löschen?')">
-      <input type="hidden" name="do" value="delete_rows">
-      <button class="btn danger" type="submit">🗑️ Löschen</button>
-      <div id="ids_holder_del"></div>
-    </form>
+          <tr id="row_<?= (int)$r['id'] ?>">
+            <td style="text-align:center;"><input type="checkbox" class="row-check" value="<?= (int)$r['id'] ?>"></td>
+            <td style="white-space:nowrap; font-weight:600; color:#334155;">
+              <?= htmlspecialchars(date('d.m.Y', strtotime($r['buchungsdatum']))) ?>
+            </td>
+            <td style="text-align:right;">
+              <?php if ($isPos): ?>
+                <span class="amount-badge-in">+CHF <?= number_format($betrag, 2, '.', "'") ?></span>
+              <?php else: ?>
+                <span class="amount-badge-out"><?= number_format($betrag, 2, '.', "'") ?> CHF</span>
+              <?php endif; ?>
+            </td>
+            <td style="max-width:360px; word-break:break-word; color:#1e293b; font-weight:500;" title="<?= htmlspecialchars($r['beschreibung']) ?>">
+              <?= htmlspecialchars($r['beschreibung']) ?>
+            </td>
+            <td>
+              <span class="badge-cat"><?= htmlspecialchars($displayKat) ?></span>
+            </td>
+            <td>
+              <?php if (!empty($r['wohnung_id']) || !empty($r['mieter_id']) || !empty($r['mieter_display_name'])): ?>
+                <span class="badge-assigned">
+                  👤 <?= htmlspecialchars($r['mieter_display_name'] ?: 'Mieter') ?>
+                  <?php if (!empty($r['wohnung_name'])): ?>
+                    &bull; 🏠 <?= htmlspecialchars($r['wohnung_name']) ?>
+                  <?php endif; ?>
+                </span>
+              <?php else: ?>
+                <span class="badge-unassigned">🔴 Nicht zugewiesen</span>
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php if (!empty($r['konto_iban'])): ?>
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                  <span style="font-family:monospace; font-size:11px; font-weight:700; color:#0f172a; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 6px; border-radius:4px; white-space:nowrap;" title="<?= htmlspecialchars($r['konto_name'] ?? '') ?>">
+                    <?= htmlspecialchars(chunk_split($r['konto_iban'], 4, ' ')) ?>
+                  </span>
+                  <span style="font-size:10px; color:#64748b; white-space:nowrap;">
+                    <?= htmlspecialchars($r['konto_bank'] ?: 'Bank') ?><?= !empty($r['konto_name']) ? ' &bull; ' . htmlspecialchars($r['konto_name']) : '' ?>
+                  </span>
+                </div>
+              <?php else: ?>
+                <span style="font-size:11px; color:#94a3b8; font-style:italic;">— Keine IBAN —</span>
+              <?php endif; ?>
+            </td>
+            <?php if (!$projektId): ?>
+              <td>
+                <span style="font-size:12px; font-weight:600; color:#475569;">
+                  <?= htmlspecialchars($r['projekt_name'] ?: '—') ?>
+                </span>
+              </td>
+            <?php endif; ?>
+            <td style="text-align:center;">
+              <button type="button" class="btn btn-primary" style="padding:4px 10px; font-size:11px;"
+                      onclick="openAssignModal(<?= (int)$r['id'] ?>, '<?= htmlspecialchars(addslashes($r['beschreibung'])) ?>', <?= (float)$r['betrag'] ?>, <?= (int)($r['wohnung_id'] ?: 0) ?>, <?= (int)($r['mieter_id'] ?: 0) ?>, <?= (int)($r['projekt_id'] ?: ($r['liegenschaft_id'] ?: $projektId)) ?>, '<?= htmlspecialchars(addslashes($r['kategorie'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($r['projekt_name'] ?? '')) ?>')">
+                📌 Zuweisen
+              </button>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
   </div>
-
-  <!-- Schnell-Zuordnung -->
-  <div class="kv-zuordnung card" style="padding:12px;background:#f9fafc;border:1px solid #e7e9ef;border-radius:12px;">
-    <h3>Schnell-Zuordnung: Zahler → Projekt/Wohnung</h3>
-    <form method="post">
-      <div class="grid" style="display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:.6rem">
-        <label for="assign_name">Name enthält (oder Regex)</label>
-        <input id="assign_name" type="text" name="assign_name" placeholder="z.B. Aeschlimann|Ramdedovic (Regex)">
-
-        <label for="assign_projekt_id">Projekt setzen auf</label>
-        <select id="assign_projekt_id" name="assign_projekt_id">
-          <option value="0">-- nicht ändern --</option>
-          <?php foreach ($projekte as $p): ?>
-            <option value="<?= (int)$p['id'] ?>"><?= htmlspecialchars($p['name']) ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <?php if ($hasWohnLbl): ?>
-          <label for="assign_wohnung">Wohnung/Einheit (frei)</label>
-          <input id="assign_wohnung" type="text" name="assign_wohnung" placeholder="z.B. Whg 2.OG rechts">
-        <?php endif; ?>
-
-        <label class="checkbox-inline" style="margin-top:1.7rem;">
-          <input type="checkbox" name="assign_scope" value="1" checked>
-          Nur aktuelle Filter berücksichtigen
-        </label>
-
-        <label class="checkbox-inline" style="margin-top:1.7rem;">
-          <input type="checkbox" name="assign_regex" value="1">
-          Als Regex behandeln
-        </label>
-      </div>
-
-      <div class="actions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
-        <button class="btn" type="submit" name="apply_assignment" value="1">💾 Zuordnung anwenden</button>
-      </div>
-    </form>
-
-    <?php if ($suggestions): ?>
-      <details style="margin-top:.5rem;">
-        <summary>Beschreibungen (Top 30 aus Treffern) auswählen → in „Name enthält“ übernehmen</summary>
-        <div class="sug-list" style="margin:.5rem 0;">
-          <?php foreach ($suggestions as $s): ?>
-            <label class="checkbox-inline" style="display:block;">
-              <input type="checkbox" class="sug-check" value="<?= htmlspecialchars($s['beschreibung']) ?>">
-              <?= htmlspecialchars($s['beschreibung']) ?>
-              <span class="muted"> (<?= (int)$s['c'] ?>× / <?= number_format((float)$s['s'], 2, ',', ' ') ?>)</span>
-            </label>
-          <?php endforeach; ?>
-        </div>
-        <button class="btn secondary" id="sug_to_name" type="button">Auswahl → „Name enthält“ (Regex)</button>
-      </details>
-    <?php endif; ?>
-  </div>
-
-  <?php
-  // Ausgabe: entweder normal (eine Tabelle) oder pro Beschreibung getrennt
-  if ($splitByDescs && $selectedDescs) {
-      // Pro Beschreibung Abschnitt (nur aus aktueller Seite)
-      $byDesc = [];
-      foreach ($rows as $r) {
-          $b = $r['beschreibung'] ?? '';
-          if ($b !== '' && in_array($b, $selectedDescs, true)) {
-              $byDesc[$b][] = $r;
-          }
-      }
-      if (!$byDesc) {
-          echo '<p><em>Keine Ergebnisse.</em></p>';
-      } else {
-          foreach ($selectedDescs as $descName) {
-              $list = $byDesc[$descName] ?? [];
-              if (!$list) continue;
-
-              // Summen pro Beschreibung
-              $sum = 0.0;
-              foreach ($list as $r) $sum += (float)$r['betrag'];
-              ?>
-              <h3 style="margin-top:1.2rem;">Beschreibung: <?= htmlspecialchars($descName) ?> (<?= count($list) ?> / <?= number_format($sum,2,',',' ') ?>)</h3>
-              <form class="selectable">
-                <table class="modern-table">
-                  <thead>
-                    <tr>
-                      <th><input type="checkbox" class="select_all"></th>
-                      <th>ID</th>
-                      <th>Projekt-ID</th>
-                      <th>Datum</th>
-                      <th style="text-align:right;">Betrag</th>
-                      <th>Beschreibung</th>
-                      <th>Kategorie</th>
-                      <?php if ($hasWohnLbl): ?><th>Wohnung</th><?php endif; ?>
-                      <th>Zahlungsart</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                  <?php foreach ($list as $r): ?>
-                    <tr>
-                      <td><input type="checkbox" class="row-check" value="<?= (int)$r['id'] ?>"></td>
-                      <td><?= (int)$r['id'] ?></td>
-                      <td><?= (int)$r['liegenschaft_id'] ?></td>
-                      <td><?= htmlspecialchars($r['buchungsdatum']) ?></td>
-                      <td style="text-align:right;"><?= number_format((float)$r['betrag'], 2, ',', ' ') ?></td>
-                      <td><?= htmlspecialchars($r['beschreibung']) ?></td>
-                      <td><?= htmlspecialchars($r['kategorie']) ?></td>
-                      <?php if ($hasWohnLbl): ?><td><?= htmlspecialchars($r['wohnung_label'] ?? '') ?></td><?php endif; ?>
-                      <td><?= htmlspecialchars($r['zahlungsart']) ?></td>
-                    </tr>
-                  <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </form>
-              <?php
-          }
-      }
-  } else {
-      // Normale Gesamttabelle (aktuelle Seite)
-      if ($rows): ?>
-        <form class="selectable">
-          <table class="modern-table" style="width:100%; border-collapse:collapse;">
-            <thead>
-              <tr style="background:#0f172a; color:#fff;">
-                <th style="width:30px;"><input type="checkbox" class="select_all"></th>
-                <th style="width:50px;">ID</th>
-                <th style="width:100px;">Datum</th>
-                <th>Liegenschaft</th>
-                <th style="text-align:right; width:130px;">Betrag</th>
-                <th>Buchungstext / Beschreibung</th>
-                <th style="width:100px;">Kategorie</th>
-                <th style="width:150px;">Wohnung</th>
-                <th style="width:180px;">Mieter</th>
-                <th style="width:90px; text-align:center;">Aktion</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($rows as $r): 
-                $betrag = (float)$r['betrag'];
-                $isPos = $betrag >= 0;
-              ?>
-                <tr id="row_<?= (int)$r['id'] ?>" style="border-bottom:1px solid #f1f5f9;">
-                  <td><input type="checkbox" class="row-check" value="<?= (int)$r['id'] ?>"></td>
-                  <td style="color:#64748b; font-size:12px;">#<?= (int)$r['id'] ?></td>
-                  <td style="white-space:nowrap; font-size:13px;"><?= htmlspecialchars(date('d.m.Y', strtotime($r['buchungsdatum']))) ?></td>
-                  <td>
-                    <span style="font-size:12px; font-weight:600; color:#475569;">
-                      <?= htmlspecialchars($r['projekt_name'] ?: ($r['liegenschaft_id'] ? 'Liegenschaft #'.$r['liegenschaft_id'] : '—')) ?>
-                    </span>
-                  </td>
-                  <td style="text-align:right; font-weight:700; color:<?= $isPos ? '#16a34a' : '#dc2626' ?>; white-space:nowrap;">
-                    <?= ($isPos ? '+' : '') . number_format($betrag, 2, '.', "'") ?> CHF
-                  </td>
-                  <td style="max-width:320px; word-break:break-word; font-size:13px;" title="<?= htmlspecialchars($r['beschreibung']) ?>">
-                    <?= htmlspecialchars($r['beschreibung']) ?>
-                  </td>
-                  <td>
-                    <span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;">
-                      <?= htmlspecialchars($r['kategorie'] ?: 'Miete') ?>
-                    </span>
-                  </td>
-                  <td>
-                    <?php if (!empty($r['wohnung_id']) && !empty($r['wohnung_name'])): ?>
-                      <span style="display:inline-flex; align-items:center; gap:4px; background:#e0f2fe; color:#0369a1; padding:3px 8px; border-radius:6px; font-weight:700; font-size:12px;">
-                        🏠 <?= htmlspecialchars($r['wohnung_name']) ?>
-                      </span>
-                    <?php elseif (!empty($r['wohnung_label'])): ?>
-                      <span style="display:inline-flex; align-items:center; gap:4px; background:#f0fdf4; color:#15803d; padding:3px 8px; border-radius:6px; font-weight:600; font-size:12px;">
-                        🏠 <?= htmlspecialchars($r['wohnung_label']) ?>
-                      </span>
-                    <?php else: ?>
-                      <span style="color:#94a3b8; font-size:12px; font-style:italic;">— offen —</span>
-                    <?php endif; ?>
-                  </td>
-                  <td>
-                    <?php if (!empty($r['mieter_id']) || (!empty($r['mieter_display_name']) && $r['mieter_display_name'] !== $r['wohnung_label'])): ?>
-                      <span style="display:inline-flex; align-items:center; gap:4px; background:#dcfce7; color:#166534; padding:3px 8px; border-radius:6px; font-weight:700; font-size:12px;">
-                        👤 <?= htmlspecialchars($r['mieter_display_name']) ?>
-                      </span>
-                    <?php else: ?>
-                      <span style="color:#ef4444; font-size:12px; font-weight:600;">🔴 Offen</span>
-                    <?php endif; ?>
-                  </td>
-                  <td style="text-align:center;">
-                    <button type="button" class="btn" style="padding:4px 10px; font-size:11px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer;"
-                            onclick="openAssignModal(<?= (int)$r['id'] ?>, '<?= htmlspecialchars(addslashes($r['beschreibung'])) ?>', <?= (float)$r['betrag'] ?>, <?= (int)($r['wohnung_id'] ?: 0) ?>, <?= (int)($r['mieter_id'] ?: 0) ?>)">
-                      📌 Zuweisen
-                    </button>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </form>
-      <?php else: ?>
-        <p><em>Keine Ergebnisse.</em></p>
-      <?php endif;
-  }
-  ?>
 
   <!-- Pagination unten -->
-  <div class="actions" style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;margin-top:.5rem;">
-    <?php
-      $pages = max(1, (int)ceil($totalMatch/$perPage));
-      $build = function($p){
-        $qs = $_GET; $qs['page']=$p;
-        return url('tools/konto_verwaltung/index.php') . '?' . http_build_query($qs);
-      };
-    ?>
-    <a class="btn secondary" href="<?= htmlspecialchars($build(1)) ?>">⏮️</a>
-    <a class="btn secondary" href="<?= htmlspecialchars($build(max(1,$page-1))) ?>">◀️</a>
-    <span class="muted" style="align-self:center;">Seite <?= $page ?> von <?= $pages ?></span>
-    <a class="btn secondary" href="<?= htmlspecialchars($build(min($pages,$page+1))) ?>">▶️</a>
-    <a class="btn secondary" href="<?= htmlspecialchars($build($pages)) ?>">⏭️</a>
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:8px;">
+    <div style="font-size:13px; color:#64748b;">
+      Zeige <?= count($rows) ?> von <?= number_format($totalMatch, 0, ',', "'") ?> Buchungen
+    </div>
+
+    <div style="display:flex; gap:6px; align-items:center;">
+      <?php
+        $pages = max(1, (int)ceil($totalMatch/$perPage));
+        $build = function($p){
+          $qs = $_GET; $qs['page']=$p;
+          return url('tools/konto_verwaltung/index.php') . '?' . http_build_query($qs);
+        };
+      ?>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars($build(1)) ?>" style="padding:6px 10px;">⏮️</a>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars($build(max(1,$page-1))) ?>" style="padding:6px 10px;">◀️</a>
+      <span style="font-size:13px; font-weight:600; color:#334155; padding:0 8px;">Seite <?= $page ?> von <?= $pages ?></span>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars($build(min($pages,$page+1))) ?>" style="padding:6px 10px;">▶️</a>
+      <a class="btn btn-secondary" href="<?= htmlspecialchars($build($pages)) ?>" style="padding:6px 10px;">⏭️</a>
+    </div>
   </div>
 
   <div class="kv-footer-actions" style="margin-top:.75rem;">
@@ -1338,14 +1407,15 @@ if ($mRes) {
 
 <!-- Modal für 1-Klick Einzelzuweisung -->
 <div id="assignModal" style="display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,0.55); backdrop-filter:blur(2px); align-items:center; justify-content:center;">
-  <div style="background:#fff; border-radius:14px; padding:24px; width:92%; max-width:540px; box-shadow:0 25px 30px -5px rgba(0,0,0,0.3); border:1px solid #e2e8f0;">
+  <div style="background:#fff; border-radius:14px; padding:24px; width:92%; max-width:560px; max-height:92vh; overflow-y:auto; box-shadow:0 25px 30px -5px rgba(0,0,0,0.3); border:1px solid #e2e8f0;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
       <h3 style="margin:0; font-size:18px; color:#0f172a; display:flex; align-items:center; gap:8px;">
-        📌 Buchung zuweisen
+        📌 Buchung zuweisen &amp; deklarieren
       </h3>
       <button type="button" onclick="closeAssignModal()" style="background:none; border:none; font-size:20px; color:#94a3b8; cursor:pointer; padding:0 4px;">&times;</button>
     </div>
     
+    <div id="modal_proj_info" style="font-size:12px; font-weight:700; color:#2563eb; background:#eff6ff; padding:6px 12px; border-radius:6px; margin-bottom:10px; border:1px solid #bfdbfe;"></div>
     <div id="assignModalDesc" style="font-size:13px; color:#475569; background:#f8fafc; border-left:3px solid #3b82f6; padding:10px 12px; border-radius:6px; margin-bottom:16px; word-break:break-word; max-height:80px; overflow-y:auto;"></div>
     
     <form method="post" id="assignModalForm">
@@ -1354,18 +1424,19 @@ if ($mRes) {
       <input type="hidden" name="konto_id" id="modal_konto_id" value="">
       
       <div style="margin-bottom:14px;">
-        <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:5px;">Wohnung / Einheit:</label>
+        <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:5px;">Wohnung / Einheit (dieser Liegenschaft):</label>
         <select name="wohnung_id" id="modal_wohnung_id" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; background:#fff;" onchange="autoSelectTenantForUnit(this.value)">
           <option value="0">-- Keine / Offen --</option>
           <?php foreach ($allWohnungen as $aw): ?>
-            <option value="<?= (int)$aw['id'] ?>">
-              <?= htmlspecialchars($aw['projekt_name'] . ' ➔ ' . $aw['name']) ?>
+            <option value="<?= (int)$aw['id'] ?>" data-pid="<?= (int)$aw['projekt_id'] ?>">
+              <?= htmlspecialchars($aw['wohnung_name'] . (!empty($aw['objekt_name']) && $aw['objekt_name'] !== $aw['wohnung_name'] ? ' (' . $aw['objekt_name'] . ')' : '')) ?>
             </option>
           <?php endforeach; ?>
         </select>
+        <div style="font-size:11px; color:#64748b; margin-top:4px;">🎯 Filtert automatisch auf die Einheiten der jeweiligen Liegenschaft.</div>
       </div>
 
-      <div style="margin-bottom:20px;">
+      <div style="margin-bottom:14px;">
         <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:5px;">Mieter (Benutzer):</label>
         <select name="mieter_id" id="modal_mieter_id" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; background:#fff;">
           <option value="0">-- Kein Mieter zugeordnet --</option>
@@ -1374,16 +1445,42 @@ if ($mRes) {
             $dName = trim($am['mieter_name'] ?: ($am['benutzer_name'] ?: 'Mieter #'.$am['wm_id']));
           ?>
             <option value="<?= $bId ?>" data-wid="<?= (int)$am['wohnung_id'] ?>">
-              <?= htmlspecialchars($dName) ?><?= $bId > 0 ? '' : ' (Kein Benutzer-Account)' ?>
+              <?= htmlspecialchars($dName) ?><?= $bId > 0 ? '' : ' (Kein Account)' ?>
             </option>
           <?php endforeach; ?>
         </select>
         <div style="font-size:11px; color:#64748b; margin-top:4px;">💡 Bei Auswahl einer Wohnung wird der hinterlegte Mieter automatisch vorausgewählt.</div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:5px;">Kategorie / Deklaration (für Liegenschaftsabrechnung):</label>
+        <select name="kategorie" id="modal_kategorie" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; background:#fff; font-weight:600;">
+          <option value="Miete">1. Mieteinnahmen (Mietzins)</option>
+          <option value="Nebenkosten">2. Bezahlte Nebenkosten (EW, Strom, Wasser, Heizung)</option>
+          <option value="Steuern">3. Bezahlte Steuern (Gemeindesteuern, Liegenschaftssteuer)</option>
+          <option value="Versicherung">4. Bezahlte Versicherungen (Gebäudeversicherung, Haftpflicht)</option>
+          <option value="Hypothek / Bank">5. Bezahlte Hypothek &amp; Bankspesen (Zinsen, Kontoführung)</option>
+          <option value="Unterhalt & Reparaturen">6. Bezahlte Unternehmer (Handwerker, Unterhalt, Reparaturen)</option>
+          <option value="Investitionen">7. Investitionen (PV-Anlage, Sanierungen)</option>
+          <option value="Auszahlung Eigentümer">8. Auszahlungen an Eigentümer (Privatbezug)</option>
+          <option value="Kaution">🛡️ Mietkaution / Mietzinsdepot (Neutral)</option>
+          <option value="Rückzahlung / Korrektur">↩️ Rückzahlung / Korrektur (Doppelzahlung, Rückerstattung)</option>
+        </select>
+      </div>
+
+      <div style="margin-top:14px; margin-bottom:14px;">
+        <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:600; color:#0f172a; background:#f0fdf4; border:1px solid #bbf7d0; padding:10px 14px; border-radius:8px; cursor:pointer;">
+          <input type="checkbox" name="remember_rule" value="1" checked style="margin-top:2px; transform:scale(1.15);">
+          <div>
+            <div>🧠 Für nächste Jahre merken (Dauer-Regel für diesen Zahlungsabsender)</div>
+            <div style="font-size:11px; font-weight:400; color:#15803d; margin-top:2px;">Erstellt eine Dauer-Regel: Künftige Buchungen dieses Absenders werden in Folgejahren automatisch so deklariert (auch bei mehreren verschiedenen Zahlern pro Wohnung).</div>
+          </div>
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
         <button type="button" class="btn secondary" onclick="closeAssignModal()" style="padding:8px 16px; border-radius:8px;">Abbrechen</button>
-        <button type="submit" class="btn" style="background:#2563eb; color:#fff; padding:8px 18px; border-radius:8px; font-weight:600; border:none; cursor:pointer;">💾 Speichern</button>
+        <button type="submit" class="btn" style="background:#2563eb; color:#fff; padding:8px 18px; border-radius:8px; font-weight:600; border:none; cursor:pointer;">💾 Speichern &amp; Merken</button>
       </div>
     </form>
   </div>
@@ -1465,12 +1562,38 @@ const unitToTenantMap = <?= json_encode(array_reduce($allMieter, function($acc, 
   return $acc;
 }, [])) ?>;
 
-function openAssignModal(id, desc, amount, wid, mid) {
+function openAssignModal(id, desc, amount, wid, mid, bookingPid, kat, projName) {
   document.getElementById('modal_konto_id').value = id;
   const prefix = (amount >= 0 ? '+' : '');
   document.getElementById('assignModalDesc').innerHTML = '<strong>Buchung #' + id + ' (' + prefix + Number(amount).toLocaleString('de-CH', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' CHF):</strong><br>' + desc;
+  
+  const targetPid = parseInt(bookingPid || <?= (int)($projektId ?: 0) ?>, 10);
+  const pName = projName || 'Liegenschaft';
+  document.getElementById('modal_proj_info').innerHTML = '📍 <strong>Liegenschaft:</strong> ' + pName + (targetPid > 0 ? ' (ID #' + targetPid + ')' : '');
+
+  const wSelect = document.getElementById('modal_wohnung_id');
+  Array.from(wSelect.options).forEach(opt => {
+    if (opt.value === '0') {
+      opt.style.display = '';
+      return;
+    }
+    const optPid = parseInt(opt.dataset.pid || 0, 10);
+    if (targetPid > 0 && optPid !== targetPid) {
+      opt.style.display = 'none';
+    } else {
+      opt.style.display = '';
+    }
+  });
+
   document.getElementById('modal_wohnung_id').value = wid || 0;
   document.getElementById('modal_mieter_id').value = mid || 0;
+
+  if (kat && kat !== '') {
+    document.getElementById('modal_kategorie').value = kat;
+  } else {
+    document.getElementById('modal_kategorie').value = (amount >= 0 ? 'Miete' : 'Unterhalt & Reparaturen');
+  }
+
   const modal = document.getElementById('assignModal');
   modal.style.display = 'flex';
 }
@@ -1493,6 +1616,21 @@ function autoSelectTenantForUnit(wid) {
   if (unitToTenantMap[wid]) {
     document.getElementById('modal_mieter_id').value = unitToTenantMap[wid];
   }
+}
+
+function selectAllYearsNav() {
+  const form = document.getElementById('yearsNavForm');
+  if (!form) return;
+  form.querySelectorAll('input[name="jahre[]"]').forEach(cb => cb.checked = false);
+  let inp = form.querySelector('input[name="jahr"]');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'hidden';
+    inp.name = 'jahr';
+    form.appendChild(inp);
+  }
+  inp.value = 'all';
+  form.submit();
 }
 
 // "alle/keine" für Beschreibungen

@@ -1,184 +1,483 @@
 /* =========================================================
-   pendenz.com – Tools: Konto-Verwaltung
-   Pfad: C:\xampp\htdocs\pendenz.com\tools\konto_verwaltung\style.css
+   pendenz.com – Tools: Konto-Verwaltung Design System
+   Pfad: tools/konto_verwaltung/style.css
    ========================================================= */
 
-:root{
-  --bg:#f7f7f8;
-  --card:#ffffff;
-  --border:#e2e2e6;
-  --text:#222;
-  --muted:#666;
-  --primary:#2d89ef;
-  --primary-strong:#1b5fa7;
-  --success:#2e7d32;
-  --danger:#c62828;
-  --warning:#b26a00;
+:root {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --success: #16a34a;
+  --success-light: #ecfdf5;
+  --success-border: #bbf7d0;
+  --danger: #dc2626;
+  --danger-light: #fef2f2;
+  --danger-border: #fecaca;
+  --warning: #d97706;
+  --warning-light: #fefce8;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.02);
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
 }
 
-*{box-sizing:border-box}
-html,body{margin:0;padding:0}
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--text);}
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-main);
+  line-height: 1.5;
+}
 
 /* ---------- Container ---------- */
-.konto-container{
-  max-width: 1100px;
-  margin: 24px auto;
-  padding: 18px 18px 24px;
+.konto-container {
+  max-width: 1540px;
+  margin: 20px auto;
+  padding: 24px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
-.konto-container h2{
-  margin: 0 0 12px;
-  font-size: 1.4rem;
+/* ---------- Header ---------- */
+.kv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 18px;
 }
 
-.konto-container h3{
-  margin: 18px 0 8px;
-  font-size: 1.05rem;
-  color: var(--muted);
+.kv-header-title h2 {
+  margin: 0 0 4px 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.3px;
 }
 
-/* ---------- Table Wrapper (responsive) ---------- */
-.table-wrap{
-  width:100%;
-  overflow-x:auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
+.kv-header-title p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
-/* ---------- Table ---------- */
-.konto-container table{
-  width:100%;
-  border-collapse: collapse;
-  min-width: 760px; /* damit Spalten nicht zu eng werden */
+.kv-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.konto-container thead th{
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #f0f0f3;
-  border-bottom: 1px solid var(--border);
-  padding:10px 8px;
-  text-align:left;
-  font-weight:600;
-}
-
-.konto-container tbody td{
-  border-bottom:1px solid var(--border);
-  padding:9px 8px;
-  vertical-align: top;
-}
-
-.konto-container tbody tr:hover{
-  background:#fafafa;
-}
-
-/* Betrags-Spalte (3. Spalte) rechtsbündig + monospace für bessere Lesbarkeit */
-.konto-container table td:nth-child(3),
-.konto-container table th:nth-child(3){
-  text-align:right;
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-}
-
-/* Datum (2. Spalte) etwas schmaler */
-.konto-container table td:nth-child(2),
-.konto-container table th:nth-child(2){
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-/* Kategorie-Badge (wenn im HTML eine <span class="badge">…</span> verwendet wird) */
-.badge{
-  display:inline-block;
-  padding:2px 8px;
-  border-radius:999px;
-  font-size:.85em;
-  background:#eef2ff;
-  border:1px solid #d9defa;
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+
+.btn-success { background: #10b981; color: #fff; }
+.btn-success:hover { background: #059669; }
+
+.btn-indigo { background: #6366f1; color: #fff; }
+.btn-indigo:hover { background: #4f46e5; }
+
+.btn-teal { background: #0d9488; color: #fff; }
+.btn-teal:hover { background: #0f766e; }
+
+.btn-secondary { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
+.btn-secondary:hover { background: #e2e8f0; color: #0f172a; }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #b91c1c; }
+
+/* ---------- Liegenschafts-Hero & Bank Banner ---------- */
+.kv-hero-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-/* Hinweise/Alerts */
-.notice{
-  color:#0b4f1f;
-  background:#eaf7ef;
-  border:1px solid #cde9d9;
-  border-radius:8px;
-  padding:10px 12px;
-}
-.alert{
-  color:#7a1010;
-  background:#fff1f1;
-  border:1px solid #f1c7c7;
-  border-radius:8px;
-  padding:10px 12px;
+.kv-hero-select {
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  background: #fff;
+  min-width: 320px;
 }
 
-/* Buttons & Links */
-.konto-container a.button,
-.konto-container button{
-  display:inline-block;
+.kv-bank-info-box {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.kv-bank-iban {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Jahres- und Monatsnavigation ---------- */
+.kv-nav-strip {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.kv-years-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kv-years-label {
+  font-weight: 800;
+  font-size: 13px;
+  color: #1e293b;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kv-year-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.kv-year-chip:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.kv-year-chip input[type="checkbox"] {
+  accent-color: #2563eb;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+}
+.kv-year-chip.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #3b82f6;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(37,99,235,0.15);
+}
+
+.kv-year-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1.5px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.kv-year-btn:hover {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+.kv-year-btn.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.kv-yr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.kv-yr-tab:hover { background: #e2e8f0; color: #0f172a; }
+.kv-yr-tab.active {
   background: var(--primary);
-  color:#fff;
-  padding:9px 14px;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
-  text-decoration:none;
-  font-weight:600;
-}
-.konto-container a.button:hover,
-.konto-container button:hover{
-  background: var(--primary-strong);
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(37,99,235,0.25);
 }
 
-/* Formulare */
-.konto-container label{display:inline-block;margin:8px 0 6px;}
-.konto-container input[type="file"],
-.konto-container input[type="text"],
-.konto-container select{
-  padding:8px 10px;
-  border:1px solid var(--border);
-  border-radius:6px;
-  background:#fff;
+.kv-mo-pill {
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid var(--border);
+  transition: all 0.15s ease;
 }
-.konto-container form .actions{margin-top:12px}
-
-/* Utilities */
-.muted{color:var(--muted)}
-.mt-16{margin-top:16px}
-.mt-20{margin-top:20px}
-
-/* Druck (nur das Wesentliche) */
-@media print{
-  .konto-container{box-shadow:none;border:none}
-  .konto-container a.button, .konto-container button{display:none}
+.kv-mo-pill:hover { background: #f1f5f9; color: #0f172a; }
+.kv-mo-pill.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.kv-mo-pill.has-data {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #bae6fd;
+}
+.kv-mo-pill.active.has-data {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
 }
 
+/* ---------- KPI Grid ---------- */
+.kv-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
 
+.kv-kpi-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.1s ease;
+}
+.kv-kpi-card:hover { transform: translateY(-1px); }
 
+.kv-kpi-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
 
+.kv-kpi-val {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
 
+/* ---------- Quick Filter Bar ---------- */
+.kv-filter-strip {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
 
-.modern-table {
+.kv-filter-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.kv-search-input {
+  flex: 1;
+  min-width: 240px;
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: #fff;
+}
+.kv-search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.kv-select {
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: #fff;
+}
+
+/* ---------- Modern Accounting Table ---------- */
+.kv-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+
+.kv-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 20px 0;
-  font-size: 14px;
+  font-size: 13px;
 }
-.modern-table th, .modern-table td {
-  border: 1px solid #ddd;
-  padding: 8px;
-}
-.modern-table tr:nth-child(even) {background-color: #f9f9f9;}
-.modern-table tr:hover {background-color: #f1f1f1;}
-.modern-table th {
-  background-color: #4CAF50;
-  color: white;
+
+.kv-table thead th {
+  background: #0f172a;
+  color: #fff;
+  padding: 12px 14px;
   text-align: left;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.kv-table tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.kv-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* Beträge */
+.amount-badge-in {
+  display: inline-block;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.amount-badge-out {
+  display: inline-block;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: #991b1b;
+  background: #fee2e2;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Status Badges */
+.badge-assigned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-unassigned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.badge-cat {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* Print */
+@media print {
+  .konto-container { box-shadow: none; border: none; padding: 0; }
+  .kv-header, .kv-actions, .kv-filter-strip, .kv-nav-strip, .btn, .kv-tools-accordion { display: none !important; }
 }

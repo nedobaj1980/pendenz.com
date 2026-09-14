@@ -5,6 +5,24 @@ require_once __DIR__ . '/../../config.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 function run_auto_match(mysqli $mysqli, int $pid = 0): array {
+    // 0. Gelernte Regeln aus konto_rules laden
+    $sqlRules = "SELECT id, pattern, is_regex, liegenschaft_id, wohnung_id, mieter_id, wohnung_label, set_kategorie, set_zahlungsart 
+                 FROM konto_rules 
+                 WHERE aktiv = 1";
+    if ($pid > 0) {
+        $sqlRules .= " AND (liegenschaft_id = $pid OR liegenschaft_id IS NULL OR liegenschaft_id = 0)";
+    }
+    $sqlRules .= " ORDER BY priority ASC, id DESC";
+    $rulesRes = $mysqli->query($sqlRules);
+    $rules = [];
+    if ($rulesRes) {
+        while ($r = $rulesRes->fetch_assoc()) {
+            if (!empty(trim($r['pattern']))) {
+                $rules[] = $r;
+            }
+        }
+    }
+
     // 1. Alle Mieter und Einheiten laden
     $sqlTenants = "
         SELECT wm.id as wm_id, wm.benutzer_id, wm.kontakt_id, wm.wohnung_id, wm.mieter_name, wm.mietzins_netto, wm.nk_akonto,
@@ -24,7 +42,6 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
     $tenants = [];
     if ($resT) {
         while ($t = $resT->fetch_assoc()) {
-            // Sammle alle Namensvarianten
             $names = [];
             if (!empty($t['mieter_name'])) $names[] = $t['mieter_name'];
             if (!empty($t['benutzer_name'])) $names[] = $t['benutzer_name'];
@@ -52,10 +69,10 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
         }
     }
 
-    // 3. Noch unzugeordnete Buchungen holen (sowohl Gutschriften als auch Buchungen ohne wohnung_id)
-    $sqlK = "SELECT id, liegenschaft_id, projekt_id, buchungsdatum, betrag, beschreibung, wohnung_id, mieter_id 
+    // 3. Unzugeordnete Buchungen laden
+    $sqlK = "SELECT id, liegenschaft_id, projekt_id, buchungsdatum, betrag, beschreibung, wohnung_id, mieter_id, kategorie 
              FROM liegenschafts_konto 
-             WHERE wohnung_id IS NULL OR wohnung_id = 0";
+             WHERE (wohnung_id IS NULL OR wohnung_id = 0 OR kategorie IS NULL OR kategorie = '')";
     if ($pid > 0) {
         $sqlK .= " AND (liegenschaft_id = $pid OR projekt_id = $pid)";
     }
@@ -66,7 +83,7 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
 
     $updateStmt = $mysqli->prepare("
         UPDATE liegenschafts_konto 
-        SET mieter_id = ?, wohnung_id = ?, wohnung_label = ?, kategorie = IF(kategorie IS NULL OR kategorie='', 'Miete', kategorie)
+        SET mieter_id = ?, wohnung_id = ?, wohnung_label = ?, kategorie = ?
         WHERE id = ?
     ");
 
@@ -74,36 +91,64 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
         while ($row = $resK->fetch_assoc()) {
             $desc = (string)$row['beschreibung'];
             $kid = (int)$row['id'];
+            $betrag = (float)$row['betrag'];
+            $currKat = trim((string)$row['kategorie']);
             $bestMatch = null;
+            $setCat = $currKat;
 
-            // 1. Zuerst Mieter-Namen abgleichen
-            foreach ($tenants as $t) {
-                foreach ($t['search_names'] as $sName) {
-                    $sName = trim($sName);
-                    if ($sName === '') continue;
+            // SCHRITT A: GELERNTEN REGELN (Dauer-Regeln für Mehrfachzahler & Kategorien)
+            foreach ($rules as $rule) {
+                $pat = trim($rule['pattern']);
+                $matched = false;
+                if (!empty($rule['is_regex'])) {
+                    $matched = @preg_match('/' . str_replace('/', '\/', $pat) . '/i', $desc) === 1;
+                } else {
+                    $matched = (stripos($desc, $pat) !== false);
+                }
 
-                    // Ganzer Name direkt enthalten?
-                    if (stripos($desc, $sName) !== false) {
-                        $bestMatch = $t;
-                        break 2;
+                if ($matched) {
+                    $bestMatch = [
+                        'benutzer_id' => !empty($rule['mieter_id']) ? (int)$rule['mieter_id'] : null,
+                        'wohnung_id' => !empty($rule['wohnung_id']) ? (int)$rule['wohnung_id'] : null,
+                        'wohnung_name' => $rule['wohnung_label'] ?: '',
+                        'search_names' => ['Regel: ' . $pat]
+                    ];
+                    if (!empty($rule['set_kategorie'])) {
+                        $setCat = $rule['set_kategorie'];
                     }
+                    break;
+                }
+            }
 
-                    // Einzelne Wörter prüfen (z. B. Nachname >= 3 Zeichen)
-                    $words = preg_split('/[\s,\/&.\-]+/', $sName);
-                    foreach ($words as $w) {
-                        $w = trim($w);
-                        // Stoppwörter ignorieren
-                        if (in_array(mb_strtolower($w), ['und', 'der', 'die', 'das', 'von', 'den', 'vom', 'mit'])) continue;
-                        if (mb_strlen($w) >= 4 && stripos($desc, $w) !== false) {
+            // SCHRITT B: MIETER-NAMEN ABGLEICHEN (falls keine Regel getroffen)
+            if (!$bestMatch && $betrag > 0) {
+                foreach ($tenants as $t) {
+                    foreach ($t['search_names'] as $sName) {
+                        $sName = trim($sName);
+                        if ($sName === '') continue;
+
+                        if (stripos($desc, $sName) !== false) {
                             $bestMatch = $t;
-                            break 3;
+                            if (empty($setCat)) $setCat = 'Miete';
+                            break 2;
+                        }
+
+                        $words = preg_split('/[\s,\/&.\-]+/', $sName);
+                        foreach ($words as $w) {
+                            $w = trim($w);
+                            if (in_array(mb_strtolower($w), ['und', 'der', 'die', 'das', 'von', 'den', 'vom', 'mit', 'inh'])) continue;
+                            if (mb_strlen($w) >= 4 && stripos($desc, $w) !== false) {
+                                $bestMatch = $t;
+                                if (empty($setCat)) $setCat = 'Miete';
+                                break 3;
+                            }
                         }
                     }
                 }
             }
 
-            // 2. Fallback: Wohnungsname abgleichen
-            if (!$bestMatch) {
+            // SCHRITT C: WOHNUNGSNAME ABGLEICHEN
+            if (!$bestMatch && $betrag > 0) {
                 foreach ($units as $u) {
                     $wName = trim((string)$u['wohnung_name']);
                     if ($wName === '' || mb_strlen($wName) < 3) continue;
@@ -115,23 +160,52 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
                             'wohnung_name' => $u['wohnung_name'],
                             'search_names' => []
                         ];
+                        if (empty($setCat)) $setCat = 'Miete';
                         break;
                     }
                 }
             }
 
-            if ($bestMatch) {
-                $mId = !empty($bestMatch['benutzer_id']) ? (int)$bestMatch['benutzer_id'] : null;
+            // SCHRITT D: STANDARD-KATEGORISIERUNG FÜR AUSGABEN & SPEZIALFÄLLE
+            if (empty($setCat)) {
+                $lDesc = mb_strtolower($desc);
+                if (str_contains($lDesc, 'kaution') || str_contains($lDesc, 'depot')) {
+                    $setCat = 'Kaution';
+                } elseif (str_contains($lDesc, 'rückzahlung') || str_contains($lDesc, 'rückvergütung') || str_contains($lDesc, 'doppelzahlung')) {
+                    $setCat = 'Rückzahlung / Korrektur';
+                } elseif (str_contains($lDesc, 'gebühr') || str_contains($lDesc, 'spesen') || str_contains($lDesc, 'abschluss') || str_contains($lDesc, 'hypothek') || str_contains($lDesc, 'zins')) {
+                    $setCat = 'Hypothek / Bank';
+                } elseif (str_contains($lDesc, 'steuer')) {
+                    $setCat = 'Steuern';
+                } elseif (str_contains($lDesc, 'versicherung') || str_contains($lDesc, 'allianz') || str_contains($lDesc, 'mobiliar') || str_contains($lDesc, 'axa') || str_contains($lDesc, 'helvetia') || str_contains($lDesc, 'suva')) {
+                    $setCat = 'Versicherung';
+                } elseif (str_contains($lDesc, 'ew ') || str_contains($lDesc, 'energie') || str_contains($lDesc, 'strom') || str_contains($lDesc, 'wasser') || str_contains($lDesc, 'abwasser') || str_contains($lDesc, 'kehricht') || str_contains($lDesc, 'kaminfeger')) {
+                    $setCat = 'Nebenkosten';
+                } elseif (str_contains($lDesc, 'pv') || str_contains($lDesc, 'solarmarkt') || str_contains($lDesc, 'photovoltaik')) {
+                    $setCat = 'Investitionen';
+                } elseif (str_contains($lDesc, 'auszahlung') || str_contains($lDesc, 'privat') || str_contains($lDesc, 'eigentümer') || (str_contains($lDesc, 'bajramoski') && $betrag < 0)) {
+                    $setCat = 'Auszahlung Eigentümer';
+                } elseif ($betrag < 0) {
+                    $setCat = 'Unterhalt & Reparaturen';
+                } elseif ($betrag > 0) {
+                    $setCat = 'Miete';
+                }
+            }
+
+            // Wenn wir einen Match oder eine Kategorie haben, schreiben!
+            if ($bestMatch || ($setCat !== '' && $setCat !== $currKat)) {
+                $mId = !empty($bestMatch['benutzer_id']) ? (int)$bestMatch['benutzer_id'] : (!empty($row['mieter_id']) ? (int)$row['mieter_id'] : null);
                 if ($mId > 0) {
-                    // Validieren gegen benutzer table wegen foreign key
                     $chk = $mysqli->query("SELECT id FROM benutzer WHERE id = $mId");
                     if (!$chk || $chk->num_rows === 0) $mId = null;
                 }
 
-                $wId = !empty($bestMatch['wohnung_id']) ? (int)$bestMatch['wohnung_id'] : null;
-                $wLbl = $bestMatch['wohnung_name'] ?? '';
+                $wId = !empty($bestMatch['wohnung_id']) ? (int)$bestMatch['wohnung_id'] : (!empty($row['wohnung_id']) ? (int)$row['wohnung_id'] : null);
+                $wLbl = !empty($bestMatch['wohnung_name']) ? $bestMatch['wohnung_name'] : '';
 
-                $updateStmt->bind_param("iisi", $mId, $wId, $wLbl, $kid);
+                if (empty($setCat)) $setCat = ($betrag > 0 ? 'Miete' : 'Unterhalt & Reparaturen');
+
+                $updateStmt->bind_param("iissi", $mId, $wId, $wLbl, $setCat, $kid);
                 $updateStmt->execute();
                 $matchedCount++;
                 $matches[] = [
@@ -139,7 +213,8 @@ function run_auto_match(mysqli $mysqli, int $pid = 0): array {
                     'datum' => $row['buchungsdatum'],
                     'betrag' => $row['betrag'],
                     'text' => $desc,
-                    'mieter' => !empty($bestMatch['search_names']) ? implode(', ', $bestMatch['search_names']) : 'Wohnungs-Match',
+                    'kategorie' => $setCat,
+                    'mieter' => !empty($bestMatch['search_names']) ? implode(', ', $bestMatch['search_names']) : '—',
                     'wohnung' => $wLbl
                 ];
             }
