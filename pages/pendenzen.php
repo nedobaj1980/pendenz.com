@@ -3253,6 +3253,7 @@ if ($res) {
                             Vermieterkategorien</a>
                         <a class="pendenzen-chip-link" href="bkp_codes.php">🧱 BKP</a>
                         <a class="pendenzen-chip-link" href="#" id="btnOpenProtocolModal">📄 Protokoll / PDF Export</a>
+                        <button type="button" class="pendenzen-chip-link" id="btnOpenVoiceModal" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff !important; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 3px 8px rgba(79, 70, 229, 0.35);">🎙️ Gimi Voice</button>
                     </div>
                 </div>
             </div>
@@ -4286,9 +4287,106 @@ if ($res) {
     <div class="lb-counter">1 / 1</div>
 </div>
 
+<!-- Floating Voice Assistant Button -->
+<button type="button" id="btnFloatingVoice" class="floating-voice-btn" title="Gimi Voice: Pendenz per Sprache erfassen" style="position:fixed; bottom:28px; right:28px; width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; border:none; box-shadow:0 8px 24px rgba(79, 70, 229, 0.45); font-size:26px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:9999; transition:transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;">
+    🎙️
+</button>
 
+<!-- Gimi Voice Modal -->
+<div id="gimiVoiceModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); backdrop-filter:blur(6px); z-index:10001; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#fff; border-radius:18px; width:100%; max-width:560px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3); overflow:hidden; display:flex; flex-direction:column; max-height:92vh;">
+        
+        <!-- Modal Header -->
+        <div style="background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; padding:16px 20px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:24px;">🎙️</span>
+                <div>
+                    <h3 style="margin:0; font-size:17px; font-weight:700;">Gimi Voice-Erfassung</h3>
+                    <div style="font-size:12px; opacity:0.85;">Pendenzen einfach einsprechen</div>
+                </div>
+            </div>
+            <button type="button" id="btnCloseVoiceModal" style="background:none; border:none; color:#fff; font-size:26px; cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
+        </div>
 
+        <!-- Modal Body -->
+        <div style="padding:20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;">
+            
+            <!-- Mic Pulsing Circle -->
+            <div style="text-align:center; padding:8px 0 4px;">
+                <div id="voiceMicCircle" style="width:76px; height:76px; border-radius:50%; background:#e0e7ff; color:#4f46e5; display:inline-flex; align-items:center; justify-content:center; font-size:34px; cursor:pointer; transition:all 0.3s ease; box-shadow:0 0 0 0 rgba(79,70,229,0.4);">
+                    🎙️
+                </div>
+                <div id="voiceStatusText" style="margin-top:12px; font-size:14px; font-weight:700; color:#1e293b;">
+                    Klicken Sie auf das Mikrofon und sprechen Sie los...
+                </div>
+                <div style="font-size:12px; color:#64748b; margin-top:3px;">
+                    Z.B.: <em>«Romanshorn Wohnung 2 im Bad Wasserhahn tropft dringend bis Freitag»</em>
+                </div>
+            </div>
 
+            <!-- Transcript Textarea -->
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <label style="font-size:12px; font-weight:700; color:#475569;">Gesprochener Text:</label>
+                    <button type="button" id="btnClearVoiceText" style="background:none; border:none; color:#64748b; font-size:11px; cursor:pointer; text-decoration:underline;">Leeren</button>
+                </div>
+                <textarea id="voiceTranscriptInput" rows="3" placeholder="Ihr gesprochener Text erscheint hier in Echtzeit... Sie können ihn auch direkt manuell bearbeiten." style="width:100%; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical; box-sizing:border-box; outline:none; transition:border-color 0.2s;"></textarea>
+            </div>
+
+            <!-- AI Extraction Badges -->
+            <div id="voiceEntityContainer" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:none;">
+                <div style="font-size:12px; font-weight:700; color:#4f46e5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                    <span>✨ Automatisch von Gimi erkannt:</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:13px;">
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;">
+                        <span style="color:#64748b; font-size:11px; display:block;">🏗️ Liegenschaft</span>
+                        <strong id="badgeProjekt" style="color:#0f172a;">-</strong>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;">
+                        <span style="color:#64748b; font-size:11px; display:block;">🏠 Wohnung</span>
+                        <strong id="badgeWohnung" style="color:#0f172a;">-</strong>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;">
+                        <span style="color:#64748b; font-size:11px; display:block;">📍 Raum</span>
+                        <strong id="badgeRaum" style="color:#0f172a;">-</strong>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;">
+                        <span style="color:#64748b; font-size:11px; display:block;">⚡ Dringlichkeit</span>
+                        <strong id="badgePrio" style="color:#0f172a;">-</strong>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; grid-column:span 2;">
+                        <span style="color:#64748b; font-size:11px; display:block;">📅 Frist</span>
+                        <strong id="badgeFrist" style="color:#0f172a;">-</strong>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; grid-column:span 2;">
+                        <span style="color:#64748b; font-size:11px; display:block;">📝 Extrahierter Titel</span>
+                        <strong id="badgeTitel" style="color:#0f172a;">-</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div id="voiceAlertBox" style="display:none; padding:10px 14px; border-radius:8px; font-size:13px; font-weight:600;"></div>
+
+        </div>
+
+        <!-- Modal Footer -->
+        <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="btnRestartVoice" style="background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer; color:#475569;">
+                🔄 Neu sprechen
+            </button>
+            <div style="display:flex; gap:8px;">
+                <button type="button" id="btnApplyVoiceToForm" style="background:#fff; border:1.5px solid #4f46e5; color:#4f46e5; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer;">
+                    📋 In Formular
+                </button>
+                <button type="button" id="btnSaveVoiceDirect" style="background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 4px 12px rgba(99,102,241,0.35);">
+                    🚀 Sofort erfassen
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
 <script>
     const dashArtMap = <?php echo json_encode(array_column($arten, null, 'id'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
@@ -5932,6 +6030,298 @@ if ($res) {
             setTimeout(() => { btn.innerHTML = originalContent; }, 3000);
         });
     };
+
+    // ==========================================
+    // Gimi Voice Assistant Controller
+    // ==========================================
+    (function initGimiVoiceAssistant() {
+        const gimiVoiceModal = document.getElementById('gimiVoiceModal');
+        const btnOpenVoiceModal = document.getElementById('btnOpenVoiceModal');
+        const btnFloatingVoice = document.getElementById('btnFloatingVoice');
+        const btnCloseVoiceModal = document.getElementById('btnCloseVoiceModal');
+        const voiceMicCircle = document.getElementById('voiceMicCircle');
+        const voiceStatusText = document.getElementById('voiceStatusText');
+        const voiceTranscriptInput = document.getElementById('voiceTranscriptInput');
+        const voiceEntityContainer = document.getElementById('voiceEntityContainer');
+        const voiceAlertBox = document.getElementById('voiceAlertBox');
+        const btnRestartVoice = document.getElementById('btnRestartVoice');
+        const btnClearVoiceText = document.getElementById('btnClearVoiceText');
+        const btnApplyVoiceToForm = document.getElementById('btnApplyVoiceToForm');
+        const btnSaveVoiceDirect = document.getElementById('btnSaveVoiceDirect');
+
+        let isRecording = false;
+        let recognition = null;
+        let lastParsedData = null;
+        let parseDebounceTimer = null;
+
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRec) {
+            recognition = new SpeechRec();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'de-CH';
+
+            recognition.onstart = () => {
+                isRecording = true;
+                if (voiceMicCircle) {
+                    voiceMicCircle.style.background = '#ef4444';
+                    voiceMicCircle.style.color = '#fff';
+                    voiceMicCircle.style.boxShadow = '0 0 0 14px rgba(239, 68, 68, 0.25)';
+                }
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = '🎙️ <span style="color:#ef4444;">Ich höre zu...</span> Sprechen Sie jetzt.';
+                }
+            };
+
+            recognition.onresult = (event) => {
+                let current = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    current += event.results[i][0].transcript;
+                }
+                if (current && voiceTranscriptInput) {
+                    voiceTranscriptInput.value = current;
+                    triggerVoiceParse(current);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.warn('SpeechRecognition error:', event.error);
+                if (voiceStatusText) {
+                    if (event.error === 'not-allowed') {
+                        voiceStatusText.innerHTML = '⚠️ Mikrofon-Zugriff wurde blockiert. Sie können den Text auch manuell eingeben.';
+                    } else if (event.error === 'no-speech') {
+                        voiceStatusText.innerHTML = 'Keine Sprache erkannt. Bitte erneut versuchen.';
+                    }
+                }
+                stopVoiceRecording();
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    try { recognition.start(); } catch(e) { stopVoiceRecording(); }
+                } else {
+                    stopVoiceRecording();
+                }
+            };
+        }
+
+        const startVoiceRecording = () => {
+            if (!recognition) {
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = '⚠️ Spracherkennung im Browser nicht nativ aktiv. Bitte Text manuell eingeben.';
+                }
+                return;
+            }
+            try {
+                isRecording = true;
+                recognition.start();
+            } catch (e) {
+                console.log('Recognition start issue:', e);
+            }
+        };
+
+        const stopVoiceRecording = () => {
+            isRecording = false;
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            if (voiceMicCircle) {
+                voiceMicCircle.style.background = '#e0e7ff';
+                voiceMicCircle.style.color = '#4f46e5';
+                voiceMicCircle.style.boxShadow = '0 0 0 0 rgba(79,70,229,0.4)';
+            }
+            if (voiceStatusText) {
+                voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+            }
+        };
+
+        const toggleVoiceRecording = () => {
+            if (isRecording) {
+                stopVoiceRecording();
+            } else {
+                startVoiceRecording();
+            }
+        };
+
+        const triggerVoiceParse = (txt) => {
+            clearTimeout(parseDebounceTimer);
+            if (!txt || txt.trim().length < 3) {
+                if (voiceEntityContainer) voiceEntityContainer.style.display = 'none';
+                return;
+            }
+            parseDebounceTimer = setTimeout(() => {
+                fetch('../api/voice_pendenz.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'parse', text: txt })
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.ok && res.parsed) {
+                        lastParsedData = res.parsed;
+                        if (voiceEntityContainer) {
+                            voiceEntityContainer.style.display = 'block';
+                            const elProj = document.getElementById('badgeProjekt');
+                            if (elProj) elProj.textContent = res.parsed.projekt_name || '—';
+                            const elWohn = document.getElementById('badgeWohnung');
+                            if (elWohn) elWohn.textContent = res.parsed.wohnung_name || '—';
+                            const elRaum = document.getElementById('badgeRaum');
+                            if (elRaum) elRaum.textContent = res.parsed.raum_name || '—';
+                            const elPrio = document.getElementById('badgePrio');
+                            if (elPrio) elPrio.textContent = res.parsed.wichtigkeit_label || 'Normal';
+                            const elFrist = document.getElementById('badgeFrist');
+                            if (elFrist) elFrist.textContent = res.parsed.enddatum_label || '—';
+                            const elTitel = document.getElementById('badgeTitel');
+                            if (elTitel) elTitel.textContent = res.parsed.titel || '—';
+                        }
+                    }
+                })
+                .catch(err => console.error('Parse error:', err));
+            }, 300);
+        };
+
+        voiceMicCircle?.addEventListener('click', toggleVoiceRecording);
+        voiceTranscriptInput?.addEventListener('input', () => {
+            triggerVoiceParse(voiceTranscriptInput.value);
+        });
+
+        const openVoiceModal = () => {
+            if (gimiVoiceModal) {
+                gimiVoiceModal.style.display = 'flex';
+                if (voiceTranscriptInput) voiceTranscriptInput.value = '';
+                if (voiceEntityContainer) voiceEntityContainer.style.display = 'none';
+                if (voiceAlertBox) voiceAlertBox.style.display = 'none';
+                lastParsedData = null;
+                startVoiceRecording();
+            }
+        };
+
+        btnOpenVoiceModal?.addEventListener('click', (e) => { e.preventDefault(); openVoiceModal(); });
+        btnFloatingVoice?.addEventListener('click', (e) => { e.preventDefault(); openVoiceModal(); });
+        
+        btnCloseVoiceModal?.addEventListener('click', () => {
+            stopVoiceRecording();
+            if (gimiVoiceModal) gimiVoiceModal.style.display = 'none';
+        });
+
+        btnClearVoiceText?.addEventListener('click', () => {
+            if (voiceTranscriptInput) voiceTranscriptInput.value = '';
+            if (voiceEntityContainer) voiceEntityContainer.style.display = 'none';
+            lastParsedData = null;
+        });
+
+        btnRestartVoice?.addEventListener('click', () => {
+            if (voiceTranscriptInput) voiceTranscriptInput.value = '';
+            if (voiceEntityContainer) voiceEntityContainer.style.display = 'none';
+            lastParsedData = null;
+            startVoiceRecording();
+        });
+
+        // Übernehmen in Formular
+        btnApplyVoiceToForm?.addEventListener('click', () => {
+            stopVoiceRecording();
+            const p = lastParsedData;
+            if (!p) {
+                alert('Bitte sprechen Sie zuerst eine Pendenz ein.');
+                return;
+            }
+
+            if (p.projekt_id) {
+                const sP = document.getElementById('quick_projekt_id');
+                if (sP) { sP.value = p.projekt_id; sP.dispatchEvent(new Event('change')); }
+            }
+            if (p.objekt_id) {
+                const sO = document.getElementById('quick_objekt_id');
+                if (sO) { sO.value = p.objekt_id; sO.dispatchEvent(new Event('change')); }
+            }
+            if (p.wohnung_id) {
+                const sW = document.getElementById('quick_wohnung_id');
+                if (sW) { sW.value = p.wohnung_id; sW.dispatchEvent(new Event('change')); }
+            }
+            if (p.raum_id) {
+                const sR = document.getElementById('quick_raum_id');
+                if (sR) { sR.value = p.raum_id; sR.dispatchEvent(new Event('change')); }
+            }
+            if (p.vorgangsart_id) {
+                const sV = document.getElementById('quick_vorgangsart_id');
+                if (sV) { sV.value = p.vorgangsart_id; sV.dispatchEvent(new Event('change')); }
+            }
+
+            // Manuelle Formularfelder befüllen
+            const fTitel = document.querySelector('input[name="titel"]') || document.getElementById('titel');
+            if (fTitel && p.titel) fTitel.value = p.titel;
+
+            const fDesc = document.querySelector('textarea[name="beschreibung"]') || document.getElementById('beschreibung');
+            if (fDesc && p.beschreibung) fDesc.value = p.beschreibung;
+
+            const fEnd = document.querySelector('input[name="enddatum"]') || document.getElementById('enddatum');
+            if (fEnd && p.enddatum) fEnd.value = p.enddatum;
+
+            const fWichtig = document.querySelector('select[name="wichtigkeit"]') || document.getElementById('wichtigkeit');
+            if (fWichtig && p.wichtigkeit) fWichtig.value = p.wichtigkeit;
+
+            // Formular öffnen & scrollen
+            const container = document.getElementById('pendenzNeuContainer');
+            if (container) {
+                container.style.display = 'block';
+                container.scrollIntoView({ behavior: 'smooth' });
+            }
+            if (gimiVoiceModal) gimiVoiceModal.style.display = 'none';
+        });
+
+        // Sofort erfassen & in DB speichern
+        btnSaveVoiceDirect?.addEventListener('click', () => {
+            stopVoiceRecording();
+            const txt = voiceTranscriptInput ? voiceTranscriptInput.value.trim() : '';
+            if (!txt) {
+                alert('Bitte sprechen Sie zuerst eine Pendenz ein.');
+                return;
+            }
+
+            btnSaveVoiceDirect.disabled = true;
+            btnSaveVoiceDirect.innerHTML = '⏳ Speichere...';
+
+            fetch('../api/voice_pendenz.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'save',
+                    text: txt,
+                    ...(lastParsedData || {})
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                btnSaveVoiceDirect.disabled = false;
+                btnSaveVoiceDirect.innerHTML = '🚀 Sofort erfassen';
+                if (res && res.ok) {
+                    if (voiceAlertBox) {
+                        voiceAlertBox.style.display = 'block';
+                        voiceAlertBox.style.background = '#dcfce7';
+                        voiceAlertBox.style.color = '#15803d';
+                        voiceAlertBox.style.border = '1px solid #bbf7d0';
+                        voiceAlertBox.innerHTML = `✅ ${res.message || 'Pendenz erfolgreich gespeichert!'}`;
+                    }
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1200);
+                } else {
+                    if (voiceAlertBox) {
+                        voiceAlertBox.style.display = 'block';
+                        voiceAlertBox.style.background = '#fee2e2';
+                        voiceAlertBox.style.color = '#b91c1c';
+                        voiceAlertBox.style.border = '1px solid #fecaca';
+                        voiceAlertBox.textContent = (res && res.message) ? res.message : 'Fehler beim Speichern.';
+                    }
+                }
+            })
+            .catch(err => {
+                btnSaveVoiceDirect.disabled = false;
+                btnSaveVoiceDirect.innerHTML = '🚀 Sofort erfassen';
+                alert('Netzwerkfehler: ' + err.message);
+            });
+        });
+    })();
 </script>
 
 

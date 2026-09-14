@@ -28,6 +28,7 @@
 | **Ablage & Drive** | `pages/files.php`, `includes/fs.php` | Google Drive Dateibrowser, automatische Ordnersynchronisation mit DB-Tabelle `fs_nodes` |
 | **Liegenschaftsabrechnung** | `tools/liegenschaftsabrechnung/index.php` | Jahresabrechnung, Bank-CSV-Import, IBAN-Prüfung, Schweizer Steuerberechnung (10%/20% vs. effektiv), Drive-Export |
 | **Pendenzen** | `pages/pendenzen.php`, `pages/pendenzen_list_pdf.php` | Aufgaben- & Mängelmanagement, kaskadierende Selektoren (Vorgang ➔ Objekt ➔ Wohnung ➔ Raum), PDF-Export mit lokalem QR-Cache |
+| **Gimi Voice Assistant** | `api/voice_pendenz.php`, `pages/pendenzen.php` | Spracheingabe für Pendenzen, Live Speech Recognition, automatisches NLP-Parsing (Liegenschaft, Wohnung, Raum, Prio, Frist) |
 | **Mietverträge** | `pages/vertrag_gen.php`, `pages/vertrag_save.php` | Schweizer Mietvertragsgenerator, PDF-Erstellung, Ablage unter `10_Mietsache/<Einheit>/04_Vertraege/` |
 | **Wohnungsabnahme** | `pages/wohnungsabnahme_protokoll.php`, `wohnungsabnahme_save.php` | Digitales Protokoll (215 Punkte), Mieter-/Vermieter-Signatur, Fotoupload, Mängelsynchronisation in Pendenzen |
 | **Dashboards & Navigation** | `pages/projekte.php`, `pages/projekt_dashboard.php`, `includes/nav_superadmin.php`, `includes/nav_admin.php` | Liegenschafts-Hub, Schnellzugriffs-Chips für Drive, Abrechnung, Mieterspiegel |
