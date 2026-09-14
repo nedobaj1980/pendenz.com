@@ -120,7 +120,7 @@ $allMieter = kv_fetch_all($mysqli, "
 ");
 
 // ==== POST-AKTIONEN ==========================================================
-if ($_SERVER['REQUEST_METHOD']==='POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
   csrf_require(); // sichert alle schreibenden Aktionen
 
   $act = $_POST['action'] ?? '';
@@ -529,7 +529,7 @@ $whereSql = $where ? (" WHERE " . implode(" AND ", $where)) : "";
 $flash = "";
 $hasWohnLbl = hasColumn($mysqli, 'liegenschafts_konto', 'wohnung_label');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
   try {
     $ids = $_POST['ids'] ?? [];
     if (!is_array($ids)) $ids = [];
@@ -745,7 +745,7 @@ $mSql = "SELECT MONTH(k.buchungsdatum) AS m,
 
 $cols = "k.id, k.liegenschaft_id, k.projekt_id, k.konto_id, k.buchungsdatum, k.betrag, k.beschreibung, k.kategorie, k.zahlungsart, k.wohnung_label, k.wohnung_id, k.mieter_id, 
          w.name as wohnung_name, p.name as projekt_name,
-         COALESCE(kk.iban, '') as konto_iban, COALESCE(kk.name, '') as konto_name, COALESCE(kk.bank, '') as konto_bank,
+         COALESCE(NULLIF(k.konto_nr, ''), kk.iban, '') as konto_iban, COALESCE(kk.name, '') as konto_name, COALESCE(kk.bank, '') as konto_bank,
          COALESCE(NULLIF(wm.mieter_name,''), b.name, k.wohnung_label) as mieter_display_name";
 
 $orderCol = ($sort === 'id') ? 'k.id' : (($sort === 'buchungsdatum') ? 'k.buchungsdatum' : 'k.' . $sort);
@@ -1345,12 +1345,14 @@ if ($mRes) {
             <td>
               <?php if (!empty($r['konto_iban'])): ?>
                 <div style="display:flex; flex-direction:column; gap:2px;">
-                  <span style="font-family:monospace; font-size:11px; font-weight:700; color:#0f172a; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 6px; border-radius:4px; white-space:nowrap;" title="<?= htmlspecialchars($r['konto_name'] ?? '') ?>">
-                    <?= htmlspecialchars(chunk_split($r['konto_iban'], 4, ' ')) ?>
+                  <span style="font-family:monospace; font-size:11px; font-weight:700; color:#0f172a; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 6px; border-radius:4px; white-space:nowrap; display:inline-block;" title="<?= htmlspecialchars($r['konto_name'] ?? '') ?>">
+                    💳 <?= htmlspecialchars(trim(chunk_split(str_replace(' ', '', $r['konto_iban']), 4, ' '))) ?>
                   </span>
-                  <span style="font-size:10px; color:#64748b; white-space:nowrap;">
-                    <?= htmlspecialchars($r['konto_bank'] ?: 'Bank') ?><?= !empty($r['konto_name']) ? ' &bull; ' . htmlspecialchars($r['konto_name']) : '' ?>
-                  </span>
+                  <?php if (!empty($r['konto_bank']) || !empty($r['konto_name'])): ?>
+                    <span style="font-size:10px; color:#64748b; white-space:nowrap;">
+                      <?= htmlspecialchars($r['konto_bank'] ?: 'Bank') ?><?= !empty($r['konto_name']) ? ' &bull; ' . htmlspecialchars($r['konto_name']) : '' ?>
+                    </span>
+                  <?php endif; ?>
                 </div>
               <?php else: ?>
                 <span style="font-size:11px; color:#94a3b8; font-style:italic;">— Keine IBAN —</span>
