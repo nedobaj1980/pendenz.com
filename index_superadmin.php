@@ -1,10 +1,14 @@
 <?php
+/**
+ * index_superadmin.php
+ * Schweizer PropTech Control Center & Portfolio-Cockpit
+ * Helvetic Immo Treuhand
+ */
 require_once __DIR__ . "/config.php";
 require_once __DIR__ . "/includes/auth.php";
 require_login();
 require_role(['superadmin']);
 
-// Fix: Navigation Layout sofort erkennen um Springen zu vermeiden
 $nav_mode = $_COOKIE['nav-layout'] ?? 'top';
 
 if (!isset($mysqli) || !($mysqli instanceof mysqli)) {
@@ -17,158 +21,153 @@ if (empty($_SESSION['csrf_token'])) {
 }
 $CSRF = $_SESSION['csrf_token'];
 
-/* ==== Helpers (idempotent) ==== */
-if (!function_exists('table_exists')) {
-  function table_exists(mysqli $db, string $name): bool
-  {
-    try {
-      $stmt = $db->prepare("SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
-      $stmt->bind_param("s", $name);
-      $stmt->execute();
-      $r = $stmt->get_result()->fetch_assoc();
-      $stmt->close();
-      return (int) ($r['c'] ?? 0) > 0;
-    } catch (Throwable $e) {
-      return false;
-    }
-  }
-}
-if (!function_exists('col_exists')) {
-  function col_exists(mysqli $db, string $table, string $col): bool
-  {
-    try {
-      $stmt = $db->prepare("SELECT COUNT(*) AS c FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name=? AND column_name=?");
-      $stmt->bind_param("ss", $table, $col);
-      $stmt->execute();
-      $r = $stmt->get_result()->fetch_assoc();
-      $stmt->close();
-      return (int) ($r['c'] ?? 0) > 0;
-    } catch (Throwable $e) {
-      return false;
-    }
-  }
-}
-if (!function_exists('pick_col')) {
-  function pick_col(mysqli $db, string $table, array $cands): ?string
-  {
-    foreach ($cands as $c)
-      if (col_exists($db, $table, $c))
-        return $c;
-    return null;
-  }
-}
-if (!function_exists('count_rows')) {
-  function count_rows(mysqli $db, string $table): int
-  {
-    if (!table_exists($db, $table))
-      return 0;
-    try {
-      $res = $db->query("SELECT COUNT(*) AS c FROM `{$table}`");
-      $n = (int) ($res->fetch_assoc()['c'] ?? 0);
-      $res->free();
-      return $n;
-    } catch (Throwable $e) {
-      return 0;
-    }
-  }
-}
-if (!function_exists('first_existing_col')) {
-  function first_existing_col(mysqli $db, string $table, array $cands): string
-  {
-    foreach ($cands as $c)
-      if (col_exists($db, $table, $c))
-        return $c;
-    return 'id';
-  }
-}
-if (!function_exists('fetch_recent')) {
-  function fetch_recent(mysqli $db, string $table, int $limit = 8): array
-  {
-    if (!table_exists($db, $table))
-      return [];
-    try {
-      $orderCol = first_existing_col($db, $table, ['sort_index', 'aktualisiert_am', 'updated_at', 'erstellt_am', 'created_at', 'import_timestamp', 'id']);
-      $stmt = $db->prepare("SELECT * FROM `{$table}` ORDER BY `{$orderCol}` DESC LIMIT ?");
-      $stmt->bind_param("i", $limit);
-      $stmt->execute();
-      $res = $stmt->get_result();
-      $rows = [];
-      while ($r = $res->fetch_assoc())
-        $rows[] = $r;
-      $stmt->close();
-      return $rows;
-    } catch (Throwable $e) {
-      return [];
-    }
-  }
-}
+/* ==== Helpers ==== */
 if (!function_exists('safe')) {
-  function safe($v)
-  {
+  function safe($v) {
     return htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
   }
 }
-
-/* ==== Zahlen & Daten ==== */
-$nav_mode = $_SESSION['nav_mode'] ?? 'side';
-$cntBenutzer = count_rows($mysqli, 'benutzer');
-$cntProjekte = count_rows($mysqli, 'projekte');
-$cntPendenzen = count_rows($mysqli, 'pendenzen');
-$tblPendenzenListe = table_exists($mysqli, 'pendenzen_liste') ? 'pendenzen_liste' :
-  (table_exists($mysqli, 'pendenzen_listen') ? 'pendenzen_listen' : null);
-$cntPendenzenListen = $tblPendenzenListe ? count_rows($mysqli, $tblPendenzenListe) : 0;
-
-$kontoTblExists = table_exists($mysqli, 'liegenschafts_konto');
-$cntKonto = $kontoTblExists ? count_rows($mysqli, 'liegenschafts_konto') : 0;
-$lastImport = null;
-if ($kontoTblExists && col_exists($mysqli, 'liegenschafts_konto', 'import_dateiname')) {
-  $orderCol = first_existing_col($mysqli, 'liegenschafts_konto', ['import_timestamp', 'aktualisiert_am', 'erstellt_am', 'buchungsdatum', 'id']);
-  $sql = "SELECT import_dateiname AS datei, MAX(`{$orderCol}`) AS zeit
-          FROM liegenschafts_konto
-          GROUP BY import_dateiname
-          ORDER BY zeit DESC LIMIT 1";
-  if ($res = $mysqli->query($sql)) {
-    $lastImport = $res->fetch_assoc();
-    $res->free();
+if (!function_exists('h')) {
+  function h($v) {
+    return htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  }
+}
+if (!function_exists('chf')) {
+  function chf($num): string {
+    return 'CHF ' . number_format((float)$num, 2, '.', "'");
   }
 }
 
-$recentUsers = fetch_recent($mysqli, 'benutzer', 30);
-$recentProjects = fetch_recent($mysqli, 'projekte', 50);
+/* ==== Portfolio-Kennzahlen & Live-Aggregation ==== */
+$metrics = [
+  'projekte'            => 0,
+  'wohnungen'           => 0,
+  'mieter_aktiv'        => 0,
+  'leerstand'           => 0,
+  'belegung_pct'        => 0.0,
+  'miete_netto'         => 0.0,
+  'miete_nk'            => 0.0,
+  'miete_brutto'        => 0.0,
+  'miete_jahr'          => 0.0,
+  'pendenzen_offen'     => 0,
+  'pendenzen_hoch'      => 0,
+  'pendenzen_ueberfaellig' => 0,
+  'fs_count'            => 0,
+  'fs_last'             => '—',
+  'benutzer_count'      => 0,
+  'konto_count'         => 0,
+  'last_import'         => null
+];
 
+// 1. Projekte & Einheiten
+if ($r = $mysqli->query("SELECT COUNT(*) FROM projekte")) {
+  $metrics['projekte'] = (int)$r->fetch_row()[0];
+}
+if ($r = $mysqli->query("SELECT COUNT(*) FROM wohnungen")) {
+  $metrics['wohnungen'] = (int)$r->fetch_row()[0];
+}
+
+// 2. Mieter & Mieteinnahmen (Soll-Miete aktiv)
+$mSql = "SELECT COUNT(*), 
+                COALESCE(SUM(mietzins_netto), 0), 
+                COALESCE(SUM(nk_akonto), 0), 
+                COALESCE(SUM(COALESCE(mietzins_netto, 0) + COALESCE(nk_akonto, 0)), 0) 
+         FROM wohnung_mieter 
+         WHERE status = 'aktiv'";
+if ($r = $mysqli->query($mSql)) {
+  $mRow = $r->fetch_row();
+  $metrics['mieter_aktiv'] = (int)$mRow[0];
+  $metrics['miete_netto']  = (float)$mRow[1];
+  $metrics['miete_nk']     = (float)$mRow[2];
+  $metrics['miete_brutto'] = (float)$mRow[3];
+  $metrics['miete_jahr']   = $metrics['miete_brutto'] * 12;
+  $metrics['leerstand']    = max(0, $metrics['wohnungen'] - $metrics['mieter_aktiv']);
+  $metrics['belegung_pct'] = $metrics['wohnungen'] > 0 ? round(($metrics['mieter_aktiv'] / $metrics['wohnungen']) * 100, 1) : 0;
+}
+
+// 3. Pendenzen-Status
+$pSql = "SELECT COUNT(*),
+                COALESCE(SUM(CASE WHEN wichtigkeit >= 4 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN enddatum IS NOT NULL AND enddatum < CURDATE() THEN 1 ELSE 0 END), 0)
+         FROM pendenzen 
+         WHERE (status IS NULL OR status NOT IN ('erledigt', 'archiviert')) 
+           AND deleted_at IS NULL";
+if ($r = $mysqli->query($pSql)) {
+  $pRow = $r->fetch_row();
+  $metrics['pendenzen_offen']      = (int)$pRow[0];
+  $metrics['pendenzen_hoch']       = (int)$pRow[1];
+  $metrics['pendenzen_ueberfaellig'] = (int)$pRow[2];
+}
+
+// 4. Drive-Dateien
+if ($r = $mysqli->query("SELECT COUNT(*), MAX(mtime) FROM fs_nodes")) {
+  $fRow = $r->fetch_row();
+  $metrics['fs_count'] = (int)$fRow[0];
+  $metrics['fs_last']  = !empty($fRow[1]) ? (string)$fRow[1] : '—';
+}
+
+// 5. Benutzer & Buchungen
+if ($r = $mysqli->query("SELECT COUNT(*) FROM benutzer")) {
+  $metrics['benutzer_count'] = (int)$r->fetch_row()[0];
+}
+if ($r = $mysqli->query("SELECT COUNT(*) FROM liegenschafts_konto")) {
+  $metrics['konto_count'] = (int)$r->fetch_row()[0];
+}
+if ($r = $mysqli->query("SELECT import_dateiname, MAX(buchungsdatum) as zeit FROM liegenschafts_konto WHERE import_dateiname IS NOT NULL AND import_dateiname != '' GROUP BY import_dateiname ORDER BY id DESC LIMIT 1")) {
+  $metrics['last_import'] = $r->fetch_assoc();
+}
+
+/* ==== Liegenschaften-Portfolio (Kompakte Zusammenfassung) ==== */
+$portfolioList = [];
+$projSql = "SELECT p.id, p.name, p.nummer,
+    COUNT(DISTINCT w.id) as cnt_units,
+    (SELECT COUNT(*) FROM wohnung_mieter wm2 
+     JOIN wohnungen w2 ON wm2.wohnung_id = w2.id 
+     JOIN objekte o2 ON w2.objekt_id = o2.id 
+     WHERE o2.projekt_id = p.id AND wm2.status = 'aktiv') as cnt_mieter,
+    (SELECT COALESCE(SUM(COALESCE(wm2.mietzins_netto,0) + COALESCE(wm2.nk_akonto,0)), 0) FROM wohnung_mieter wm2 
+     JOIN wohnungen w2 ON wm2.wohnung_id = w2.id 
+     JOIN objekte o2 ON w2.objekt_id = o2.id 
+     WHERE o2.projekt_id = p.id AND wm2.status = 'aktiv') as soll_brutto,
+    (SELECT COUNT(*) FROM pendenzen pend 
+     WHERE pend.projekt_id = p.id AND (pend.status IS NULL OR pend.status NOT IN ('erledigt','archiviert')) AND pend.deleted_at IS NULL) as cnt_pendenzen
+    FROM projekte p
+    LEFT JOIN objekte o ON o.projekt_id = p.id
+    LEFT JOIN wohnungen w ON w.objekt_id = o.id
+    GROUP BY p.id
+    ORDER BY p.name ASC";
+if ($res = $mysqli->query($projSql)) {
+  while ($row = $res->fetch_assoc()) {
+    $portfolioList[] = $row;
+  }
+}
+
+/* ==== Dringende Pendenzen laden (Neueste & Prioritäre) ==== */
 $recentTodos = [];
-if (table_exists($mysqli, 'pendenzen')) {
-  $orderCol = first_existing_col($mysqli, 'pendenzen', ['sort_index', 'aktualisiert_am', 'erstellt_am', 'id']);
-  $res = $mysqli->query("
-      SELECT p.*, b.name AS zustaendig_name, pr.name AS projekt_name, o.name AS objekt_name, w.name AS wohnung_name, img.pfad AS cover_pfad
-      FROM pendenzen p 
-      LEFT JOIN benutzer b ON b.id = p.zustaendig_id 
-      LEFT JOIN projekte pr ON pr.id = p.projekt_id 
-      LEFT JOIN objekte o ON o.id = p.objekt_id
-      LEFT JOIN wohnungen w ON w.id = p.wohnung_id
-      LEFT JOIN (SELECT pendenz_id, pfad FROM pendenz_dateien WHERE typ='image' AND is_cover=1 GROUP BY pendenz_id) img ON img.pendenz_id = p.id
-      ORDER BY p.`$orderCol` DESC LIMIT 2000");
-  if ($res) {
-    while ($r = $res->fetch_assoc())
-      $recentTodos[] = $r;
-    $res->free();
+$todoSql = "
+  SELECT p.*, 
+         b.name AS zustaendig_name, 
+         pr.name AS projekt_name, 
+         o.name AS objekt_name, 
+         w.name AS wohnung_name, 
+         img.pfad AS cover_pfad
+  FROM pendenzen p 
+  LEFT JOIN benutzer b ON b.id = p.zustaendig_id 
+  LEFT JOIN projekte pr ON pr.id = p.projekt_id 
+  LEFT JOIN objekte o ON o.id = p.objekt_id
+  LEFT JOIN wohnungen w ON w.id = p.wohnung_id
+  LEFT JOIN (SELECT pendenz_id, pfad FROM pendenz_dateien WHERE typ='image' AND is_cover=1 GROUP BY pendenz_id) img ON img.pendenz_id = p.id
+  WHERE (p.status IS NULL OR p.status NOT IN ('erledigt', 'archiviert')) AND p.deleted_at IS NULL
+  ORDER BY p.wichtigkeit DESC, p.enddatum ASC, p.id DESC 
+  LIMIT 50";
+if ($res = $mysqli->query($todoSql)) {
+  while ($r = $res->fetch_assoc()) {
+    $recentTodos[] = $r;
   }
 }
-
-/* ==== Spalten für Inline-Edit ==== */
-$userNameCol = pick_col($mysqli, 'benutzer', ['name', 'vollname', 'benutzername', 'username']);
-$userEmailCol = pick_col($mysqli, 'benutzer', ['email', 'e_mail']);
-$userRoleCol = pick_col($mysqli, 'benutzer', ['rolle', 'role', 'rollenname']);
-$projNameCol = pick_col($mysqli, 'projekte', ['name', 'titel']);
-$projSortCol = pick_col($mysqli, 'projekte', ['sort_index', 'position', 'ordering', 'rang', 'reihenfolge']);
-$todoTitleCol = pick_col($mysqli, 'pendenzen', ['titel', 'beschreibung', 'name', 'betreff']);
-$todoStatusCol = pick_col($mysqli, 'pendenzen', ['status', 'state']);
-$todoSortCol = pick_col($mysqli, 'pendenzen', ['sort_index', 'position', 'ordering', 'rang', 'reihenfolge']);
 
 include __DIR__ . "/includes/header.php";
 include __DIR__ . "/includes/nav_superadmin.php";
-
-/* ==== Assets & Fonts ==== */
 ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -176,47 +175,364 @@ include __DIR__ . "/includes/nav_superadmin.php";
 <link rel="stylesheet" href="<?= safe(asset_url('dashboard.css')) ?>?v=<?= time() ?>">
 
 <style>
-  /* Local Overrides/Tweaks */
-  .sdash-icon {
-    width: 20px;
-    height: 20px;
-    stroke-width: 2;
-    stroke: currentColor;
-    fill: none;
-    vertical-align: middle;
+  /* PropTech High-End Dashboard Styles */
+  .sdash-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0b1329 100%);
+    position: relative;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sdash-hero__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #60a5fa;
+    margin-bottom: 16px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .sdash-hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .sdash-hero__btn-voice {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: #fff;
+    border: 0;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+    animation: pulseVoice 2.5s infinite;
+  }
+  @keyframes pulseVoice {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
   }
 
-  .sdash-hero__icon {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 24px;
-    color: var(--sd-primary);
+  /* Executive KPI Cards */
+  .sdash-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    margin: -36px auto 32px;
+    max-width: 1800px;
+    padding: 0 32px;
+    position: relative;
+    z-index: 10;
+  }
+  .sdash-kpi-card {
+    background: var(--sd-surface);
+    border: 1px solid var(--sd-border);
+    border-radius: var(--sd-radius);
+    padding: 22px;
+    box-shadow: var(--sd-shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .sdash-kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--sd-shadow-lg);
+    border-color: #cbd5e1;
+  }
+  .sdash-kpi-card__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .sdash-kpi-card__title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sd-text-muted);
+  }
+  .sdash-kpi-card__icon {
+    font-size: 1.5rem;
+  }
+  .sdash-kpi-card__val {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--sd-text);
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .sdash-kpi-card__sub {
+    font-size: 0.8rem;
+    color: var(--sd-text-muted);
+  }
+  .sdash-kpi-card__badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 8px;
+  }
+  .badge-success { background: #dcfce7; color: #166534; }
+  .badge-warning { background: #fef3c7; color: #92400e; }
+  .badge-danger  { background: #fee2e2; color: #991b1b; }
+  .badge-info    { background: #e0f2fe; color: #075985; }
+
+  /* Verwalter-Kernmodule (Hub Cards) */
+  .sdash-hub-section {
+    max-width: 1800px;
+    margin: 0 auto 36px;
+    padding: 0 32px;
+  }
+  .sdash-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+  .sdash-hub-card {
+    background: var(--sd-surface);
+    border: 1px solid var(--sd-border);
+    border-radius: var(--sd-radius-lg);
+    padding: 24px;
+    box-shadow: var(--sd-shadow);
+    transition: all 0.25s ease;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .sdash-hub-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--hub-accent, #3b82f6);
+    opacity: 0.8;
+  }
+  .sdash-hub-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--sd-shadow-lg);
+    border-color: var(--hub-accent, #3b82f6);
+  }
+  .sdash-hub-card__icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+  }
+  .sdash-hub-card__title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin-bottom: 6px;
+    color: var(--sd-text);
+  }
+  .sdash-hub-card__desc {
+    font-size: 0.85rem;
+    color: var(--sd-text-muted);
+    line-height: 1.5;
+    flex-grow: 1;
+    margin-bottom: 14px;
+  }
+  .sdash-hub-card__action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.825rem;
+    font-weight: 700;
+    color: var(--hub-accent, #3b82f6);
+  }
+
+  /* Portfolio Grid */
+  .sdash-portfolio-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 20px;
+  }
+  .sdash-port-card {
+    background: var(--sd-surface);
+    border: 1px solid var(--sd-border);
+    border-radius: var(--sd-radius);
+    padding: 20px;
+    box-shadow: var(--sd-shadow-sm);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .sdash-port-card:hover {
+    border-color: #94a3b8;
+    box-shadow: var(--sd-shadow);
+  }
+  .sdash-port-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .sdash-port-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--sd-text);
+    margin: 0;
+  }
+  .sdash-port-stats {
+    display: flex;
+    gap: 16px;
+    background: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+  }
+  .sdash-port-stat-item {
+    display: flex;
+    flex-direction: column;
+  }
+  .sdash-port-stat-label {
+    font-size: 0.725rem;
+    color: var(--sd-text-muted);
+    text-transform: uppercase;
+  }
+  .sdash-port-stat-val {
+    font-weight: 700;
+    color: var(--sd-text);
+  }
+  .sdash-port-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sdash-port-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    background: #f1f5f9;
+    color: #334155;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: 0.15s;
+  }
+  .sdash-port-chip:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+  .sdash-port-chip--primary {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+  .sdash-port-chip--primary:hover {
+    background: #bae6fd;
+    color: #0284c7;
+  }
+
+  /* Status & Priority Badges */
+  .prio-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .prio-5 { background: #fee2e2; color: #b91c1c; }
+  .prio-4 { background: #ffedd5; color: #c2410c; }
+  .prio-3 { background: #f1f5f9; color: #475569; }
+  .prio-1 { background: #f8fafc; color: #94a3b8; }
+
+  /* Gimi Voice Modal */
+  .voice-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(8px);
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .voice-modal {
+    background: #fff;
+    border-radius: 20px;
+    max-width: 580px;
+    width: 100%;
+    padding: 28px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    position: relative;
+    border: 1px solid #e2e8f0;
+  }
+  .voice-pulse-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: #fff;
+    border: 0;
+    font-size: 32px;
+    cursor: pointer;
+    margin: 16px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transition: 0.2s;
+  }
+  .voice-pulse-btn.listening {
+    animation: voiceRings 1.5s infinite;
+  }
+  @keyframes voiceRings {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
   }
 </style>
 
-<div class="sdash-wrap" id="sdash-root" data-endpoint-batch="/pendenz.com/api/batch_update.php"
-  data-endpoint-quick="/pendenz.com/api/quick_insert.php" data-endpoint-prefs="/pendenz.com/api/dashboard_prefs.php"
+<div class="sdash-wrap" id="sdash-root" 
+  data-endpoint-batch="<?= safe(base_url('api/batch_update.php')) ?>"
+  data-endpoint-upload="<?= safe(base_url('api/dashboard_upload.php')) ?>"
+  data-endpoint-quick="<?= safe(base_url('api/quick_insert.php')) ?>" 
+  data-endpoint-preview="<?= safe(base_url('api/pendenzen_preview.php')) ?>"
+  data-endpoint-prefs="<?= safe(base_url('api/dashboard_prefs.php')) ?>"
   data-csrf="<?= safe($CSRF) ?>">
 
+  <!-- HERO SECTION -->
   <header class="sdash-hero" role="region" aria-label="Dashboard Intro">
     <div class="sdash-hero__text">
-      <svg class="sdash-icon sdash-hero__icon" viewBox="0 0 24 24">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-      </svg>
-      <h1>Control Center</h1>
-      <p>Willkommen im Superadmin-Bereich. Verwalten Sie Benutzer, Projekte und Pendenzen mit maximaler Effizienz.</p>
+      <div class="sdash-hero__badge">
+        <span>🏛️ Helvetic Immo Treuhand</span>
+        <span>•</span>
+        <span>Swiss PropTech Control Center</span>
+      </div>
+      <h1>Liegenschafts-Cockpit</h1>
+      <p>Willkommen, Nedim. Vollständige Übersicht über Dein Portfolio, Mieterspiegel, Finanzen, Google Drive und Pendenzen.</p>
+      
       <div class="sdash-hero__cta">
+        <button type="button" class="sdash-btn sdash-hero__btn-voice" onclick="openVoiceModal()">
+          🎙️ Gimi Voice (Sprechen)
+        </button>
         <a class="sdash-btn" href="<?= safe(page_url('pendenz_neu.php')) ?>">
-          <svg class="sdash-icon" viewBox="0 0 24 24">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <svg class="sdash-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
           Neue Pendenz
         </a>
-        <a class="sdash-btn sdash-btn--ghost" href="http://localhost/pendenz.com/tools/konto_verwaltung/index.php">
-          <svg class="sdash-icon" viewBox="0 0 24 24">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-          </svg>
-          CSV Import
+        <a class="sdash-btn sdash-btn--ghost" href="<?= safe(page_url('mieterspiegel.php')) ?>">
+          📈 Mieterspiegel
+        </a>
+        <a class="sdash-btn sdash-btn--ghost" href="<?= safe(base_url('tools/liegenschaftsabrechnung/index.php')) ?>">
+          📑 Abrechnung & Steuern
+        </a>
+        <a class="sdash-btn sdash-btn--ghost" href="<?= safe(page_url('files.php')) ?>">
+          📁 Google Drive
+        </a>
+        <a class="sdash-btn sdash-btn--ghost" href="<?= safe(page_url('ai_assistant.php')) ?>">
+          🤖 KI-Zentrale
         </a>
       </div>
     </div>
@@ -225,352 +541,303 @@ include __DIR__ . "/includes/nav_superadmin.php";
 
   <div class="sdash-banner" id="sdash-banner" role="alert"></div>
 
-  <style>
-    .sdash-col-picker {
-      position: relative;
-    }
-
-    .sdash-col-menu {
-      position: absolute;
-      top: calc(100% + 8px);
-      right: 0;
-      background: var(--sd-surface);
-      border: 1px solid var(--sd-border);
-      border-radius: var(--sd-radius);
-      padding: 16px;
-      box-shadow: var(--sd-shadow-lg);
-      z-index: 100;
-      min-width: 200px;
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .sdash-col-menu--show {
-      display: flex;
-    }
-
-    .sdash-col-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.875rem;
-      cursor: pointer;
-      color: var(--sd-text-muted);
-      padding: 4px 0;
-    }
-
-    .sdash-col-item:hover {
-      color: var(--sd-text);
-    }
-
-    .sdash-col-item input {
-      cursor: pointer;
-    }
-
-    /* Column targeting classes added via JS */
-    .col-hidden {
-      display: none !important;
-    }
-  </style>
-
-  <div class="sdash-lightbox" id="sdash-lightbox">
-    <img src="" id="lightbox-img" alt="Vollbild">
-  </div>
-
-  <section class="sdash-cards" role="region" aria-label="Kennzahlen">
-    <article class="sdash-card">
-      <div class="sdash-card__title">Benutzer</div>
-      <div class="sdash-card__num" data-count="<?= safe($cntBenutzer) ?>"><?= safe($cntBenutzer) ?></div>
-      <div class="sdash-card__meta">Systemzugänge gesamt</div>
-      <a class="sdash-card__link" href="<?= safe(page_url('benutzer.php')) ?>">
-        Verwalten
-        <svg class="sdash-icon" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </a>
-    </article>
-    <article class="sdash-card">
-      <div class="sdash-card__title">Projekte</div>
-      <div class="sdash-card__num" data-count="<?= safe($cntProjekte) ?>"><?= safe($cntProjekte) ?></div>
-      <div class="sdash-card__meta">Aktive Bauvorhaben</div>
-      <a class="sdash-card__link" href="<?= safe(page_url('projekte.php')) ?>">
-        Konfigurieren
-        <svg class="sdash-icon" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </a>
-    </article>
-    <article class="sdash-card">
-      <div class="sdash-card__title">Pendenzen</div>
-      <div class="sdash-card__num" data-count="<?= safe($cntPendenzen) ?>"><?= safe($cntPendenzen) ?></div>
-      <div class="sdash-card__meta">Aufgaben & Tickets</div>
-      <a class="sdash-card__link" href="<?= safe(page_url('pendenzen.php')) ?>">
-        Details
-        <svg class="sdash-icon" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </a>
-    </article>
-    <article class="sdash-card">
-      <div class="sdash-card__title">Listen</div>
-      <div class="sdash-card__num" data-count="<?= safe($cntPendenzenListen) ?>"><?= safe($cntPendenzenListen) ?></div>
-      <div class="sdash-card__meta">Definierte Ansichten</div>
-      <a class="sdash-card__link" href="<?= safe(page_url('pendenzen_liste.php')) ?>">
-        Öffnen
-        <svg class="sdash-icon" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </a>
-    </article>
-    <article class="sdash-card">
-      <div class="sdash-card__title">Konto-Audit</div>
-      <div class="sdash-card__num" data-count="<?= safe($cntKonto) ?>"><?= safe($cntKonto) ?></div>
-      <div class="sdash-card__meta">
-        <?php if ($lastImport): ?>
-          Letztes File: <span class="sdash-badge"><?= safe($lastImport['datei']) ?></span>
-        <?php else: ?>
-          Keine aktuellen Importe
-        <?php endif; ?>
+  <!-- EXECUTIVE KPI CARDS -->
+  <section class="sdash-kpi-grid" aria-label="Executive Kennzahlen">
+    <!-- Mietertrag -->
+    <article class="sdash-kpi-card">
+      <div class="sdash-kpi-card__top">
+        <span class="sdash-kpi-card__title">Soll-Mietertrag / Monat</span>
+        <span class="sdash-kpi-card__icon">💰</span>
       </div>
-      <a class="sdash-card__link" href="http://localhost/pendenz.com/tools/konto_verwaltung/index.php">
-        Audit Tool
-        <svg class="sdash-icon" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </a>
+      <div class="sdash-kpi-card__val"><?= safe(chf($metrics['miete_brutto'])) ?></div>
+      <div class="sdash-kpi-card__sub">
+        Netto: <?= safe(chf($metrics['miete_netto'])) ?> · NK: <?= safe(chf($metrics['miete_nk'])) ?>
+      </div>
+      <div>
+        <span class="sdash-kpi-card__badge badge-success">
+          Hochrechnung Jahr: <?= safe(chf($metrics['miete_jahr'])) ?>
+        </span>
+      </div>
+    </article>
+
+    <!-- Bestand & Belegung -->
+    <article class="sdash-kpi-card">
+      <div class="sdash-kpi-card__top">
+        <span class="sdash-kpi-card__title">Einheiten & Belegung</span>
+        <span class="sdash-kpi-card__icon">🏘️</span>
+      </div>
+      <div class="sdash-kpi-card__val"><?= safe($metrics['wohnungen']) ?> Einheiten</div>
+      <div class="sdash-kpi-card__sub">
+        <?= safe($metrics['mieter_aktiv']) ?> belegt · <?= safe($metrics['leerstand']) ?> leerstehend
+      </div>
+      <div>
+        <span class="sdash-kpi-card__badge <?= $metrics['belegung_pct'] >= 80 ? 'badge-success' : 'badge-warning' ?>">
+          <?= safe($metrics['belegung_pct']) ?>% Belegungsquote
+        </span>
+      </div>
+    </article>
+
+    <!-- Liegenschaften -->
+    <article class="sdash-kpi-card">
+      <div class="sdash-kpi-card__top">
+        <span class="sdash-kpi-card__title">Liegenschaften-Portfolio</span>
+        <span class="sdash-kpi-card__icon">🏢</span>
+      </div>
+      <div class="sdash-kpi-card__val"><?= safe($metrics['projekte']) ?> Liegenschaften</div>
+      <div class="sdash-kpi-card__sub">Alle Objekte aktiv verwaltet</div>
+      <div>
+        <span class="sdash-kpi-card__badge badge-info">100% Bereit & Strukturiert</span>
+      </div>
+    </article>
+
+    <!-- Pendenzen -->
+    <article class="sdash-kpi-card">
+      <div class="sdash-kpi-card__top">
+        <span class="sdash-kpi-card__title">Pendenzen & Aufgaben</span>
+        <span class="sdash-kpi-card__icon">⚠️</span>
+      </div>
+      <div class="sdash-kpi-card__val"><?= safe($metrics['pendenzen_offen']) ?> Offen</div>
+      <div class="sdash-kpi-card__sub">
+        <?= safe($metrics['pendenzen_hoch']) ?> Dringend · <?= safe($metrics['pendenzen_ueberfaellig']) ?> Überfällig
+      </div>
+      <div>
+        <span class="sdash-kpi-card__badge <?= $metrics['pendenzen_hoch'] > 0 ? 'badge-danger' : 'badge-success' ?>">
+          <?= safe($metrics['pendenzen_hoch']) ?> hohe Priorität
+        </span>
+      </div>
+    </article>
+
+    <!-- Google Drive & Cloud -->
+    <article class="sdash-kpi-card">
+      <div class="sdash-kpi-card__top">
+        <span class="sdash-kpi-card__title">Google Drive Ablage</span>
+        <span class="sdash-kpi-card__icon">📁</span>
+      </div>
+      <div class="sdash-kpi-card__val"><?= safe($metrics['fs_count']) ?> Dateien</div>
+      <div class="sdash-kpi-card__sub">Letzter Sync: <?= safe(substr($metrics['fs_last'], 0, 16)) ?></div>
+      <div>
+        <span class="sdash-kpi-card__badge badge-success">Drive-Mount Verbunden</span>
+      </div>
     </article>
   </section>
 
-  <section class="sdash-toolbar" role="region" aria-label="Werkzeuge">
-    <label for="sdash-search" class="visually-hidden">Dashboard-Suche</label>
-    <input id="sdash-search" name="sdash-search" type="search" placeholder="Globale Suche über alle Tabellen…"
-      autocomplete="off">
-    <div class="sdash-view-toggle" role="group" aria-label="Ansicht umschalten">
-      <button class="sdash-chip sdash-chip--on" data-view="tables" type="button">Tabellen</button>
-      <button class="sdash-chip" data-view="cards" type="button">Karten</button>
+  <!-- VERWALTER-HUB: DIE 5 KERNMODULE -->
+  <section class="sdash-hub-section" aria-label="Kernmodule">
+    <div style="margin-bottom: 16px;">
+      <h2 style="font-size: 1.35rem; font-weight: 800; color: var(--sd-text); margin: 0 0 4px;">
+        Verwalter-Kommandozentrale
+      </h2>
+      <p style="font-size: 0.9rem; color: var(--sd-text-muted); margin: 0;">
+        Direkter Zugriff auf alle operativen Werkzeuge für Deine Liegenschaften
+      </p>
+    </div>
+
+    <div class="sdash-hub-grid">
+      <!-- 1. Mieterspiegel -->
+      <a href="<?= safe(page_url('mieterspiegel.php')) ?>" class="sdash-hub-card" style="--hub-accent: #3b82f6;">
+        <div class="sdash-hub-card__icon">📈</div>
+        <div class="sdash-hub-card__title">Mieterspiegel & Mietzinse</div>
+        <div class="sdash-hub-card__desc">
+          Mieterstamm, Mieterwechsel, Mietzinsanpassung nach Schweizer Recht, CSV-Export und 1-Klick Drive-Sicherung.
+        </div>
+        <div class="sdash-hub-card__action">Mieterspiegel öffnen →</div>
+      </a>
+
+      <!-- 2. Liegenschaftsabrechnung -->
+      <a href="<?= safe(base_url('tools/liegenschaftsabrechnung/index.php')) ?>" class="sdash-hub-card" style="--hub-accent: #10b981;">
+        <div class="sdash-hub-card__icon">📑</div>
+        <div class="sdash-hub-card__title">Liegenschaftsabrechnung & Steuern</div>
+        <div class="sdash-hub-card__desc">
+          Jahresabrechnung für Banken & Partner, Schweizer Steuerberechnung (10%/20% Pauschale vs. effektiv) und Bank-CSV-Import.
+        </div>
+        <div class="sdash-hub-card__action">Abrechnung öffnen →</div>
+      </a>
+
+      <!-- 3. Google Drive Explorer -->
+      <a href="<?= safe(page_url('files.php')) ?>" class="sdash-hub-card" style="--hub-accent: #f59e0b;">
+        <div class="sdash-hub-card__icon">📁</div>
+        <div class="sdash-hub-card__title">Google Drive Explorer</div>
+        <div class="sdash-hub-card__desc">
+          Direkter Zugriff auf die Drive-Ablage, Verträge (04_Vertraege), Abnahmeprotokolle und 1-Klick Ordnersynchronisation.
+        </div>
+        <div class="sdash-hub-card__action">Drive Explorer starten →</div>
+      </a>
+
+      <!-- 4. Gimi Voice & KI-Assistent -->
+      <a href="<?= safe(page_url('ai_assistant.php')) ?>" class="sdash-hub-card" style="--hub-accent: #8b5cf6;">
+        <div class="sdash-hub-card__icon">🎙️</div>
+        <div class="sdash-hub-card__title">Gimi Voice & KI-Zentrale</div>
+        <div class="sdash-hub-card__desc">
+          Mängel und Pendenzen direkt per Sprache diktieren, Mietrechtsauskünfte und automatisches NLP-Parsing.
+        </div>
+        <div class="sdash-hub-card__action">Gimi aufrufen →</div>
+      </a>
+
+      <!-- 5. Mietvertrag & Wohnungsabnahme -->
+      <a href="<?= safe(page_url('abnahmen.php')) ?>" class="sdash-hub-card" style="--hub-accent: #ec4899;">
+        <div class="sdash-hub-card__icon">📝</div>
+        <div class="sdash-hub-card__title">Wohnungsabnahme & Verträge</div>
+        <div class="sdash-hub-card__desc">
+          Digitales 215-Punkte Abnahmeprotokoll mit Signatur, automatischer Mängelsync in Pendenzen und PDF-Vertragsgenerator.
+        </div>
+        <div class="sdash-hub-card__action">Abnahmen & Verträge →</div>
+      </a>
     </div>
   </section>
 
-  <section class="sdash-grids" data-view="tables">
+  <!-- PORTFOLIO GRID: ALLE LIEGENSCHAFTEN AUF EINEN BLICK -->
+  <section class="sdash-panel" style="margin-bottom: 32px;" role="region" aria-labelledby="h-portfolio">
+    <header class="sdash-panel__header">
+      <h3 class="sdash-panel__title" id="h-portfolio">
+        🏢 Liegenschaften-Portfolio (<?= count($portfolioList) ?> Objekte)
+      </h3>
+      <a class="sdash-link" href="<?= safe(page_url('projekte.php')) ?>">Alle Liegenschaften verwalten →</a>
+    </header>
 
-    <div class="sdash-grid-2">
-      <!-- Benutzer -->
-      <article class="sdash-panel" style="margin-bottom:0" role="region" aria-labelledby="h-users">
-        <header class="sdash-panel__head">
-          <h3 id="h-users">
-            <svg class="sdash-icon" style="margin-right:8px" viewBox="0 0 24 24">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            Zuletzt registriert
-          </h3>
-          <a class="sdash-link" href="<?= safe(page_url('benutzer.php')) ?>">Alle Benutzer</a>
-        </header>
-        <?php if ($recentUsers): ?>
-          <div class="sdash-table-wrap">
-            <table id="tbl-users" class="sdash-table" aria-describedby="h-users" data-table="benutzer">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>E-Mail</th>
-                  <th>Rolle</th>
-                  <th>Aktivität</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($recentUsers as $u):
-                  $uid = (int) ($u['id'] ?? 0); ?>
-                  <tr data-id="<?= safe($uid) ?>">
-                    <td><?= safe($uid) ?></td>
-                    <td <?php if ($userNameCol): ?>contenteditable="true" class="sdash-edit" data-edit-table="benutzer"
-                        data-edit-id="<?= safe($uid) ?>" data-edit-field="<?= safe($userNameCol) ?>" <?php endif; ?>>
-                      <?= safe($u[$userNameCol ?? 'name'] ?? ($u['vollname'] ?? '—')) ?>
-                    </td>
-                    <td <?php if ($userEmailCol): ?>contenteditable="true" class="sdash-edit" data-edit-table="benutzer"
-                        data-edit-id="<?= safe($uid) ?>" data-edit-field="<?= safe($userEmailCol) ?>" <?php endif; ?>>
-                      <?= safe($u[$userEmailCol ?? 'email'] ?? '—') ?>
-                    </td>
-                    <td <?php if ($userRoleCol): ?>contenteditable="true" class="sdash-edit" data-edit-table="benutzer"
-                        data-edit-id="<?= safe($uid) ?>" data-edit-field="<?= safe($userRoleCol) ?>" <?php endif; ?>>
-                      <span class="sdash-badge"><?= safe($u[$userRoleCol ?? 'rolle'] ?? 'benutzer') ?></span>
-                    </td>
-                    <td><?= safe($u['letzter_login'] ?? ($u['aktualisiert_am'] ?? ($u['erstellt_am'] ?? '—'))) ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-            <div class="sdash-savebar">
-              <button class="sdash-btn js-save-table" data-target="#tbl-users" type="button">Speichern</button>
-              <span class="sdash-save-status" aria-live="polite"></span>
+    <div class="sdash-portfolio-grid">
+      <?php foreach ($portfolioList as $proj): 
+        $pid = (int)$proj['id'];
+        $pName = $proj['name'];
+        $units = (int)$proj['cnt_units'];
+        $mieter = (int)$proj['cnt_mieter'];
+        $brutto = (float)$proj['soll_brutto'];
+        $pends = (int)$proj['cnt_pendenzen'];
+      ?>
+        <article class="sdash-port-card">
+          <div class="sdash-port-header">
+            <div>
+              <span style="font-size:0.75rem; font-weight:800; color:#3b82f6; text-transform:uppercase;">ID <?= $pid ?></span>
+              <h4 class="sdash-port-title"><?= safe($pName) ?></h4>
+            </div>
+            <?php if ($pends > 0): ?>
+              <span class="sdash-kpi-card__badge badge-danger"><?= $pends ?> Pendenzen</span>
+            <?php else: ?>
+              <span class="sdash-kpi-card__badge badge-success">0 Pendenzen</span>
+            <?php endif; ?>
+          </div>
+
+          <div class="sdash-port-stats">
+            <div class="sdash-port-stat-item">
+              <span class="sdash-port-stat-label">Einheiten</span>
+              <span class="sdash-port-stat-val"><?= $units ?> (<?= $mieter ?> belegt)</span>
+            </div>
+            <div class="sdash-port-stat-item">
+              <span class="sdash-port-stat-label">Soll-Miete / Mt.</span>
+              <span class="sdash-port-stat-val"><?= safe(chf($brutto)) ?></span>
             </div>
           </div>
-        <?php else: ?>
-          <p class="sdash-warn">Keine Daten oder Tabelle <code>benutzer</code> fehlt.</p><?php endif; ?>
-      </article>
 
-      <!-- Projekte -->
-      <article class="sdash-panel" style="margin-bottom:0" role="region" aria-labelledby="h-projects">
-        <header class="sdash-panel__head">
-          <h3 id="h-projects">
-            <svg class="sdash-icon" style="margin-right:8px" viewBox="0 0 24 24">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            Bauvorhaben
-          </h3>
-          <a class="sdash-link" href="<?= safe(page_url('projekte.php')) ?>">Alle Projekte</a>
-        </header>
-        <div class="sdash-table-tools">
-          <button id="btn-add-project" class="sdash-btn sdash-btn--ghost"
-            style="padding:6px 12px; font-size:0.8rem; color:var(--sd-text)" type="button">
-            <svg class="sdash-icon" style="width:16px; height:16px" viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Neues Projekt
+          <div class="sdash-port-actions">
+            <a href="<?= safe(page_url('projekt_dashboard.php?id=' . $pid)) ?>" class="sdash-port-chip sdash-port-chip--primary" title="Dashboard">
+              📊 Dashboard
+            </a>
+            <a href="<?= safe(page_url('mieterspiegel.php?projekt_id=' . $pid)) ?>" class="sdash-port-chip" title="Mieterspiegel">
+              📈 Mieterspiegel
+            </a>
+            <a href="<?= safe(base_url('tools/liegenschaftsabrechnung/index.php?projekt_id=' . $pid)) ?>" class="sdash-port-chip" title="Abrechnung">
+              📑 Abrechnung
+            </a>
+            <a href="<?= safe(page_url('files.php?project_id=' . $pid)) ?>" class="sdash-port-chip" title="Drive">
+              📁 Drive
+            </a>
+            <a href="<?= safe(page_url('pendenzen.php?projekt_id=' . $pid)) ?>" class="sdash-port-chip" title="Pendenzen">
+              📋 Pendenzen
+            </a>
+          </div>
+        </article>
+      <?php endforeach; ?>
+    </div>
+  </section>
+
+  <!-- PENDENZEN MANAGEMENT -->
+  <section class="sdash-panel" style="margin-bottom: 32px;" role="region" aria-labelledby="h-pendenzen">
+    <header class="sdash-panel__header">
+      <h3 class="sdash-panel__title" id="h-pendenzen">
+        📋 Dringende Pendenzen & Mängel
+      </h3>
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <select id="lists-preset" name="lists-preset" class="sdash-select" aria-label="Filter wählen">
+          <option value="offen" selected>Nur Offene</option>
+          <option value="prio_hoch">Hohe Priorität</option>
+          <option value="ueberfaellig">Überfällig</option>
+          <option value="alle">Alle (Neueste)</option>
+        </select>
+
+        <div class="sdash-col-picker">
+          <button class="sdash-btn sdash-btn--ghost" id="btn-col-picker" type="button" style="padding: 8px 12px; font-size: 0.8rem;">
+            ⚙️ Spalten
           </button>
-        </div>
-        <?php if ($recentProjects): ?>
-          <div class="sdash-table-wrap">
-            <table id="tbl-projects" class="sdash-table" aria-describedby="h-projects" data-table="projekte"
-              <?= $projSortCol ? 'data-order-field="' . safe($projSortCol) . '"' : '' ?>>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Bezeichnung</th>
-                  <th>Letzte Änderung</th>
-                  <th class="reorder-column" data-no-sort></th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($recentProjects as $p):
-                  $pid = (int) ($p['id'] ?? 0);
-                  $name = $p[$projNameCol ?? 'name'] ?? ($p['titel'] ?? ('Projekt #' . $pid));
-                  $ts = $p['aktualisiert_am'] ?? ($p['erstellt_am'] ?? ''); ?>
-                  <tr data-id="<?= safe($pid) ?>">
-                    <td><?= safe($pid) ?></td>
-                    <td contenteditable="true" class="sdash-edit" data-edit-table="projekte"
-                      data-edit-id="<?= safe($pid) ?>" data-edit-field="<?= safe($projNameCol ?: 'name') ?>">
-                      <?= safe($name) ?></td>
-                    <td><small><?= safe($ts) ?></small></td>
-                    <td class="reorder-handle" title="Ziehen zum Sortieren">
-                      <svg class="sdash-icon" viewBox="0 0 24 24" style="width:16px; height:16px">
-                        <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />
-                      </svg>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-            <div class="sdash-savebar">
-              <button class="sdash-btn js-save-table" data-target="#tbl-projects" type="button">Speichern</button>
-              <span class="sdash-save-status" aria-live="polite"></span>
-            </div>
+          <div class="sdash-col-menu" id="col-menu">
+            <?php
+            $allCols = [
+              'col-id'      => 'ID',
+              'col-img'     => 'Bild',
+              'col-proj'    => 'Projekt',
+              'col-obj'     => 'Objekt',
+              'col-unit'    => 'Wohnung',
+              'col-titel'   => 'Titel',
+              'col-desc'    => 'Kurzbeschreibung',
+              'col-resp'    => 'Verantwortlich',
+              'col-status'  => 'Status',
+              'col-prio'    => 'Priorität',
+              'col-due'     => 'Fällig am',
+              'col-created' => 'Erstellt am',
+              'col-updated' => 'Geändert',
+              'col-note'    => 'Notiz'
+            ];
+            foreach ($allCols as $cls => $lbl):
+              $checked = !in_array($cls, ['col-desc', 'col-note', 'col-updated', 'col-obj', 'col-unit']) ? 'checked' : '';
+            ?>
+              <label class="sdash-col-item">
+                <input type="checkbox" <?= $checked ?> data-col="<?= $cls ?>" class="js-col-toggle">
+                <?= h($lbl) ?>
+              </label>
+            <?php endforeach; ?>
           </div>
-        <?php else: ?>
-          <p class="sdash-warn">Keine Daten oder Tabelle <code>projekte</code> fehlt.</p><?php endif; ?>
-      </article>
-    </div>
-
-    <!-- Pendenzen Management (Unified) -->
-    <article class="sdash-panel" style="grid-column: 1 / -1" role="region" aria-labelledby="h-pendenzen">
-      <header class="sdash-panel__head">
-        <h3 id="h-pendenzen">
-          <svg class="sdash-icon" style="margin-right:8px" viewBox="0 0 24 24">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          Pendenzen Management
-        </h3>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <select id="lists-preset" name="lists-preset" class="sdash-select" aria-label="Filter wählen">
-            <option value="alle">Alle (Neueste)</option>
-            <option value="offen" selected>Nur Offene</option>
-            <option value="prio_hoch">Hohe Priorität</option>
-            <option value="ueberfaellig">Überfällig</option>
-          </select>
-
-          <div class="sdash-col-picker">
-            <button class="sdash-btn sdash-btn--ghost" id="btn-col-picker" type="button"
-              style="padding: 8px 12px; font-size: 0.8rem;">
-              ⚙️ Spalten einblenden / ausblenden
-            </button>
-            <div class="sdash-col-menu" id="col-menu">
-              <?php
-              $allCols = [
-                'col-id' => 'ID',
-                'col-img' => 'Bild',
-                'col-proj' => 'Projekt',
-                'col-obj' => 'Objekt',
-                'col-unit' => 'Wohnung',
-                'col-titel' => 'Titel',
-                'col-desc' => 'Kurzbeschreibung',
-                'col-resp' => 'Verantwortlich',
-                'col-status' => 'Status',
-                'col-prio' => 'Priorität',
-                'col-due' => 'Fällig am',
-                'col-created' => 'Erstellt am',
-                'col-updated' => 'Letzte Änderung',
-                'col-note' => 'Notiz'
-              ];
-              foreach ($allCols as $cls => $lbl):
-                // Default visibility: hide some heavy columns by default
-                $checked = !in_array($cls, ['col-desc', 'col-note', 'col-updated', 'col-obj', 'col-unit']) ? 'checked' : '';
-                ?>
-                <label class="sdash-col-item">
-                  <input type="checkbox" <?= $checked ?> data-col="<?= $cls ?>" class="js-col-toggle">
-                  <?= h($lbl) ?>
-                </label>
-              <?php endforeach; ?>
-            </div>
-          </div>
-
-          <a class="sdash-link" href="<?= safe(page_url('pendenzen.php')) ?>">Gesamtliste</a>
         </div>
-      </header>
 
-      <div class="sdash-table-tools">
-        <button id="btn-add-todo" class="sdash-btn sdash-btn--ghost"
-          style="padding:6px 12px; font-size:0.8rem; color:var(--sd-text)" type="button">
-          <svg class="sdash-icon" style="width:16px; height:16px" viewBox="0 0 24 24">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Schnell-Eintrag
+        <button id="btn-add-todo" class="sdash-btn" style="padding:8px 14px; font-size:0.85rem;" type="button">
+          + Schnell-Eintrag
         </button>
-      </div>
 
-      <div class="sdash-table-wrap">
-        <table id="tbl-todos" class="sdash-table" aria-describedby="h-pendenzen" data-table="pendenzen">
-          <thead>
-            <tr>
-              <th class="col-id">ID</th>
-              <th class="col-img">Bild</th>
-              <th class="col-proj">Projekt</th>
-              <th class="col-obj">Objekt</th>
-              <th class="col-unit">Wohnung</th>
-              <th class="col-titel">Titel</th>
-              <th class="col-desc">Beschreibung</th>
-              <th class="col-resp">Verantwortlich</th>
-              <th class="col-status">Status</th>
-              <th class="col-prio">Priorität</th>
-              <th class="col-due">Fällig am</th>
-              <th class="col-created">Erstellt am</th>
-              <th class="col-updated">Geändert</th>
-              <th class="col-note">Notiz</th>
-              <th class="reorder-column" data-no-sort></th>
-            </tr>
-          </thead>
-          <tbody id="pendenzen-body">
+        <a class="sdash-link" href="<?= safe(page_url('pendenzen.php')) ?>">Zur Gesamtliste →</a>
+      </div>
+    </header>
+
+    <div class="sdash-table-wrap">
+      <table id="tbl-todos" class="sdash-table" aria-describedby="h-pendenzen" data-table="pendenzen">
+        <thead>
+          <tr>
+            <th class="col-id">ID</th>
+            <th class="col-img">Bild</th>
+            <th class="col-proj">Liegenschaft</th>
+            <th class="col-obj">Objekt</th>
+            <th class="col-unit">Wohnung</th>
+            <th class="col-titel">Titel</th>
+            <th class="col-desc">Beschreibung</th>
+            <th class="col-resp">Verantwortlich</th>
+            <th class="col-status">Status</th>
+            <th class="col-prio">Priorität</th>
+            <th class="col-due">Fällig am</th>
+            <th class="col-created">Erstellt am</th>
+            <th class="col-updated">Geändert</th>
+            <th class="col-note">Notiz</th>
+            <th class="reorder-column" data-no-sort></th>
+          </tr>
+        </thead>
+        <tbody id="pendenzen-body">
+          <?php if (empty($recentTodos)): ?>
+            <tr><td colspan="15" style="text-align:center; padding:24px; color:#64748b;">Keine offenen Pendenzen vorhanden. Alles erledigt!</td></tr>
+          <?php else: ?>
             <?php foreach ($recentTodos as $t):
-              $tid = (int) ($t['id'] ?? 0);
-              $titel = h($t[$todoTitleCol ?? 'titel'] ?? ($t['beschreibung'] ?? '—'));
+              $tid = (int)$t['id'];
+              $titel = h($t['titel'] ?? ($t['beschreibung'] ?? '—'));
               $stat = h($t['status'] ?? 'offen');
-              $prio = h($t['prioritaet'] ?? 'normal');
-              $due = h($t['faellig_am'] ?? $t['enddatum'] ?? '—');
-              $created = h($t['erstellt_am'] ?? '—');
-              $updated = h($t['aktualisiert_am'] ?? '—');
+              $wichtigkeit = (int)($t['wichtigkeit'] ?? 3);
+              $prioLabel = $wichtigkeit >= 5 ? 'Dringend' : ($wichtigkeit >= 4 ? 'Hoch' : ($wichtigkeit <= 1 ? 'Niedrig' : 'Normal'));
+              $due = h($t['enddatum'] ?? '—');
+              $created = h(substr((string)($t['erstellt_am'] ?? ''), 0, 10));
+              $updated = h(substr((string)($t['geaendert_am'] ?? $t['aktualisiert_am'] ?? ''), 0, 10));
               $user = h($t['zustaendig_name'] ?? '—');
               $proj = h($t['projekt_name'] ?? '—');
               $obj = h($t['objekt_name'] ?? '—');
@@ -579,44 +846,42 @@ include __DIR__ . "/includes/nav_superadmin.php";
               $note = h($t['notiz'] ?? '—');
               $img = $t['cover_pfad'] ?? '';
               $opts = ['offen', 'in Bearbeitung', 'erledigt', 'archiviert'];
-              ?>
+            ?>
               <tr data-id="<?= $tid ?>">
                 <td class="col-id"><?= $tid ?></td>
                 <td class="col-img">
                   <div class="sdash-thumb-container js-thumb-wrap">
                     <?php if ($img): ?>
-                      <img src="<?= h($img) ?>" class="sdash-thumb js-lightbox-trigger" alt="Vorschau" loading="lazy"
-                        onclick="if(window.openSdashLightbox) openSdashLightbox(this.src)">
+                      <img src="<?= h($img) ?>" class="sdash-thumb js-lightbox-trigger" alt="Vorschau" loading="lazy" onclick="if(window.openSdashLightbox) openSdashLightbox(this.src)">
                     <?php else: ?>
-                      <div class="sdash-thumb js-thumb-empty js-replace-trigger"
-                        onclick="this.parentElement.querySelector('.js-col-img-input').click()"
-                        style="display:flex;align-items:center;justify-content:center;font-size:10px;color:#ccc">Kein Bild
+                      <div class="sdash-thumb js-thumb-empty js-replace-trigger" onclick="this.parentElement.querySelector('.js-col-img-input').click()" style="display:flex;align-items:center;justify-content:center;font-size:10px;color:#ccc">
+                        Kein Bild
                       </div>
                     <?php endif; ?>
-                    <div class="sdash-replace-btn js-replace-trigger" title="Bild ändern"
-                      onclick="this.parentElement.querySelector('.js-col-img-input').click()"></div>
-                    <a href="pages/pendenz_show.php?id=<?= $tid ?>" class="sdash-detail-btn"
-                      title="Details bearbeiten"></a>
+                    <div class="sdash-replace-btn js-replace-trigger" title="Bild ändern" onclick="this.parentElement.querySelector('.js-col-img-input').click()"></div>
+                    <a href="<?= safe(page_url('pendenz_show.php?id=' . $tid)) ?>" class="sdash-detail-btn" title="Details bearbeiten"></a>
                     <input type="file" class="js-col-img-input hidden" accept="image/*">
                   </div>
                 </td>
                 <td class="col-proj"><small><?= $proj ?></small></td>
                 <td class="col-obj"><small><?= $obj ?></small></td>
                 <td class="col-unit"><small><?= $unit ?></small></td>
-                <td class="col-titel" contenteditable="true" class="sdash-edit" data-edit-field="titel"><?= $titel ?></td>
-                <td class="col-desc" contenteditable="true" class="sdash-edit" data-edit-field="kurzbeschreibung">
-                  <?= $desc ?>
+                <td class="col-titel" contenteditable="true" class="sdash-edit" data-edit-field="titel">
+                  <a href="<?= safe(page_url('pendenz_show.php?id=' . $tid)) ?>" style="color:inherit; font-weight:600; text-decoration:none;">
+                    <?= $titel ?>
+                  </a>
                 </td>
+                <td class="col-desc" contenteditable="true" class="sdash-edit" data-edit-field="kurzbeschreibung"><?= $desc ?></td>
                 <td class="col-resp"><span class="sdash-badge"><?= $user ?></span></td>
                 <td class="col-status">
-                  <select class="sdash-select status-badge status-<?= $stat ?>" data-edit-field="status"
-                    onchange="this.className='sdash-select status-badge status-'+this.value">
+                  <select class="sdash-select status-badge status-<?= $stat ?>" data-edit-field="status" onchange="this.className='sdash-select status-badge status-'+this.value">
                     <?php foreach ($opts as $o): ?>
-                      <option value="<?= $o ?>" <?= $o === $stat ? ' selected' : '' ?>><?= $o ?></option>
+                      <option value="<?= $o ?>" <?= $o === $stat ? 'selected' : '' ?>><?= $o ?></option>
                     <?php endforeach; ?>
                   </select>
                 </td>
-                <td class="col-prio" contenteditable="true" class="sdash-edit" data-edit-field="prioritaet"><?= $prio ?>
+                <td class="col-prio">
+                  <span class="prio-badge prio-<?= $wichtigkeit ?>"><?= $prioLabel ?></span>
                 </td>
                 <td class="col-due" contenteditable="true" class="sdash-edit" data-edit-field="enddatum">
                   <small><?= $due ?></small>
@@ -624,29 +889,240 @@ include __DIR__ . "/includes/nav_superadmin.php";
                 <td class="col-created"><small><?= $created ?></small></td>
                 <td class="col-updated"><small><?= $updated ?></small></td>
                 <td class="col-note" contenteditable="true" class="sdash-edit" data-edit-field="notiz"><?= $note ?></td>
-                <td class="reorder-handle"><svg class="sdash-icon" viewBox="0 0 24 24" style="width:16px; height:16px">
-                    <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />
-                  </svg></td>
+                <td class="reorder-handle">
+                  <svg class="sdash-icon" viewBox="0 0 24 24" style="width:16px; height:16px"><path d="M7 15l5 5 5-5M7 9l5-5 5 5" /></svg>
+                </td>
               </tr>
             <?php endforeach; ?>
-          </tbody>
-        </table>
-        <div class="sdash-savebar">
-          <button class="sdash-btn js-save-table" data-target="#tbl-todos" type="button">Speichern</button>
-          <span class="sdash-save-status" aria-live="polite"></span>
-        </div>
+          <?php endif; ?>
+        </tbody>
+      </table>
+      <div class="sdash-savebar">
+        <button class="sdash-btn js-save-table" data-target="#tbl-todos" type="button">Änderungen Speichern</button>
+        <span class="sdash-save-status" aria-live="polite"></span>
       </div>
-    </article>
-
+    </div>
   </section>
+
 </div>
 
-<!-- Vollbild / Lightbox Fenster -->
+<!-- VOLLBILD / LIGHTBOX MODAL -->
 <div id="sdash-lightbox" class="sdash-lightbox" onclick="this.classList.remove('sdash-lightbox--show')">
   <img id="lightbox-img" src="" alt="Vollbild">
 </div>
 
-<!-- Vanilla JS -->
-<script src="http://localhost/pendenz.com/assets/dashboard.js?v=<?= time() ?>" defer></script>
+<!-- GIMI VOICE MODAL (SCHNELLE SPRACHERFASSUNG) -->
+<div id="gimiVoiceModal" class="voice-modal-overlay">
+  <div class="voice-modal" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:1.25rem; font-weight:800; display:flex; align-items:center; gap:8px;">
+        <span>🎙️</span> Gimi Voice Assistant
+      </h3>
+      <button type="button" onclick="closeVoiceModal()" style="background:none; border:0; font-size:24px; cursor:pointer; color:#94a3b8;">✕</button>
+    </div>
+
+    <p style="font-size:0.9rem; color:#64748b; margin:0 0 16px;">
+      Sprich einfach frei: z.B. <em>"Romanshorn Arbonerstrasse Wohnung 3 Wasserhahn tropft dringend bis Freitag"</em>
+    </p>
+
+    <div style="text-align:center;">
+      <button type="button" id="voiceMicBtn" class="voice-pulse-btn" onclick="toggleVoiceRecording()">
+        🎙️
+      </button>
+      <div id="voiceStatusText" style="font-size:0.85rem; font-weight:700; color:#ef4444; min-height:20px;">
+        Klicke auf das Mikrofon um die Aufnahme zu starten
+      </div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:6px;">Erkannter Text:</label>
+      <textarea id="voiceTranscriptInput" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;" placeholder="Hier erscheint der gesprochene Text..."></textarea>
+    </div>
+
+    <!-- Live Preview Badges -->
+    <div id="voiceMatchPreview" style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:none;">
+      <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">Automatische Zuweisung:</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:0.8rem;">
+        <span id="vBadgeProj" class="sdash-port-chip sdash-port-chip--primary">Liegenschaft: —</span>
+        <span id="vBadgeUnit" class="sdash-port-chip">Wohnung: —</span>
+        <span id="vBadgePrio" class="sdash-port-chip">Priorität: Normal</span>
+        <span id="vBadgeDue" class="sdash-port-chip">Frist: —</span>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+      <button type="button" class="sdash-btn sdash-btn--ghost" onclick="closeVoiceModal()">Abbrechen</button>
+      <button type="button" id="btnSaveVoicePendenz" class="sdash-btn" style="background:#10b981; border:0;" onclick="saveVoicePendenz()" disabled>
+        💾 Als Pendenz speichern
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPTS -->
+<script src="<?= safe(asset_url('dashboard.js')) ?>?v=<?= time() ?>" defer></script>
+
+<script>
+let voiceRecognition = null;
+let voiceIsListening = false;
+let lastParsedVoice = null;
+
+function openVoiceModal() {
+  document.getElementById('gimiVoiceModal').style.display = 'flex';
+  startVoiceRecording();
+}
+
+function closeVoiceModal() {
+  stopVoiceRecording();
+  document.getElementById('gimiVoiceModal').style.display = 'none';
+}
+
+function startVoiceRecording() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert("Spracherkennung wird in diesem Browser nicht unterstützt. Bitte nutze Google Chrome oder Edge.");
+    return;
+  }
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  voiceRecognition = new SpeechRec();
+  voiceRecognition.lang = 'de-CH';
+  voiceRecognition.interimResults = true;
+  voiceRecognition.continuous = false;
+
+  const btn = document.getElementById('voiceMicBtn');
+  const status = document.getElementById('voiceStatusText');
+  const input = document.getElementById('voiceTranscriptInput');
+
+  voiceRecognition.onstart = () => {
+    voiceIsListening = true;
+    btn.classList.add('listening');
+    status.textContent = '🔴 Ich höre zu... sprich jetzt!';
+  };
+
+  voiceRecognition.onresult = (e) => {
+    let text = '';
+    for (let i = 0; i < e.results.length; i++) {
+      text += e.results[i][0].transcript;
+    }
+    input.value = text;
+    if (e.results[0].isFinal) {
+      parseVoiceInput(text);
+    }
+  };
+
+  voiceRecognition.onerror = (err) => {
+    console.error(err);
+    status.textContent = '⚠️ Spracherkennung unterbrochen oder keine Eingabe.';
+    stopVoiceRecording();
+  };
+
+  voiceRecognition.onend = () => {
+    stopVoiceRecording();
+    if (input.value.trim().length > 0) {
+      parseVoiceInput(input.value.trim());
+    }
+  };
+
+  try {
+    voiceRecognition.start();
+  } catch(e) {
+    console.warn(e);
+  }
+}
+
+function stopVoiceRecording() {
+  voiceIsListening = false;
+  const btn = document.getElementById('voiceMicBtn');
+  if (btn) btn.classList.remove('listening');
+  const status = document.getElementById('voiceStatusText');
+  if (status && status.textContent.includes('höre zu')) {
+    status.textContent = 'Aufnahme beendet.';
+  }
+  if (voiceRecognition) {
+    try { voiceRecognition.stop(); } catch(e) {}
+  }
+}
+
+function toggleVoiceRecording() {
+  if (voiceIsListening) {
+    stopVoiceRecording();
+  } else {
+    startVoiceRecording();
+  }
+}
+
+async function parseVoiceInput(text) {
+  if (!text) return;
+  const status = document.getElementById('voiceStatusText');
+  status.textContent = '🧠 Gimi analysiert Liegenschaft, Wohnung und Frist...';
+
+  try {
+    const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'parse', text: text })
+    });
+    const data = await res.json();
+    if (data.ok && data.parsed) {
+      lastParsedVoice = data.parsed;
+      document.getElementById('voiceMatchPreview').style.display = 'block';
+      document.getElementById('vBadgeProj').textContent = 'Liegenschaft: ' + (lastParsedVoice.projekt_name || 'Keine Angabe');
+      document.getElementById('vBadgeUnit').textContent = 'Wohnung: ' + (lastParsedVoice.wohnung_name || 'Allgemein');
+      document.getElementById('vBadgePrio').textContent = 'Priorität: ' + (lastParsedVoice.wichtigkeit_label || 'Normal');
+      document.getElementById('vBadgeDue').textContent  = 'Frist: ' + (lastParsedVoice.enddatum_label || lastParsedVoice.enddatum || 'Keine Frist');
+
+      status.textContent = '✅ Analyse erfolgreich! Bereit zum Speichern.';
+      document.getElementById('btnSaveVoicePendenz').disabled = false;
+    } else {
+      status.textContent = '⚠️ Konnte Details nicht eindeutig zuordnen. Bitte Text prüfen.';
+      document.getElementById('btnSaveVoicePendenz').disabled = false;
+    }
+  } catch(e) {
+    console.error(e);
+    status.textContent = 'Verbindungsfehler beim Verarbeiten.';
+  }
+}
+
+async function saveVoicePendenz() {
+  const text = document.getElementById('voiceTranscriptInput').value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById('btnSaveVoicePendenz');
+  btn.disabled = true;
+  btn.textContent = 'Speichere...';
+
+  try {
+    const payload = {
+      action: 'save',
+      text: text,
+      ...(lastParsedVoice || {})
+    };
+
+    const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.ok && data.new_id) {
+      alert("✅ Pendenz #" + data.new_id + " erfolgreich angelegt!");
+      window.location.reload();
+    } else {
+      alert("Fehler beim Speichern: " + (data.message || data.error || 'Unbekannt'));
+      btn.disabled = false;
+      btn.textContent = '💾 Als Pendenz speichern';
+    }
+  } catch(e) {
+    console.error(e);
+    alert("Netzwerkfehler beim Speichern.");
+    btn.disabled = false;
+    btn.textContent = '💾 Als Pendenz speichern';
+  }
+}
+
+document.getElementById('voiceTranscriptInput')?.addEventListener('input', function() {
+  const val = this.value.trim();
+  document.getElementById('btnSaveVoicePendenz').disabled = val.length === 0;
+});
+</script>
 
 <?php include __DIR__ . "/includes/footer.php"; ?>

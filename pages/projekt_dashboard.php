@@ -54,7 +54,7 @@ if (!function_exists('csrf_validate')) {
 require_once __DIR__ . '/../includes/fs.php'; // project_root_path(), fs_list_children_smart(), fs_abs_from_rel(), fs_scan_project()
 
 if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); } }
-if (!function_exists('brand_url')) { function brand_url(string $p=''){ return '/pendenz.com/assets/'.ltrim($p?:'logo-mark.png','/'); } }
+if (!function_exists('brand_url')) { function brand_url(string $p=''){ return asset_url($p ?: 'brand/logo-mark.png'); } }
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/nav_dispatch.php';
@@ -495,7 +495,7 @@ $coverChoices = ($ctxRel!=='') ? image_candidates($mysqli,$projekt_id,$ctxRel) :
     <div class="header-card">
       <div class="inner">
         <?php if (!empty($proj['bild'])): ?>
-          <img src="/pendenz.com/<?= ltrim($proj['bild'],'/') ?>" alt="" style="max-width:180px;border-radius:10px;border:1px solid #ddd;">
+          <img src="<?= e(base_url(ltrim($proj['bild'],'/'))) ?>" alt="" style="max-width:180px;border-radius:10px;border:1px solid #ddd;">
         <?php endif; ?>
         <div style="flex:1;min-width:0">
           <h1 style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= e($proj['name']) ?></h1>

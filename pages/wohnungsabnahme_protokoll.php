@@ -3,8 +3,8 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/room_taxonomy.php';
 require_once __DIR__ . '/../includes/vorgang_taxonomy.php';
 
-$pid = (int)($_GET['projekt_id'] ?? 0);
-$uid = (int)($_GET['unit_id'] ?? 0);
+$pid = (int)($_GET['projekt_id'] ?? ($_GET['project_id'] ?? 0));
+$uid = (int)($_GET['unit_id'] ?? ($_GET['wohnung_id'] ?? ($_GET['id'] ?? 0)));
 
 // Liegenschaft & Wohnung laden (robust)
 $unit = null;

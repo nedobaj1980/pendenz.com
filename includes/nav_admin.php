@@ -208,17 +208,19 @@ body.nav-top { padding-left: 0; padding-top: var(--topbar-height); }
     <li class="<?= $is_active('index_admin.php') ?>"><a href="<?= e(url('index_admin.php')) ?>">🏛️ Dashboard</a></li>
     <li class="<?= $is_active('profil.php') ?>"><a href="<?= e(url('pages/profil.php')) ?>">👤 Mein Profil</a></li>
     
-    <li class="has-submenu <?= ($is_active('benutzer.php')||$is_active('firmen.php')||$is_active('bkp_codes.php')||$is_active('wohnungen_liste.php'))?'submenu-open active':'' ?>">
+    <li class="has-submenu <?= ($is_active('benutzer.php')||$is_active('firmen.php')||$is_active('bkp_codes.php')||$is_active('wohnungen_liste.php')||$is_active('mieterspiegel.php'))?'submenu-open active':'' ?>">
       <a href="#">👥 Partner & Bestand</a>
       <ul class="submenu">
         <li class="<?= $is_active('benutzer.php') ?>"><a href="<?= e(url('pages/benutzer.php')) ?>">👥 Partner/User</a></li>
         <li class="<?= $is_active('firmen.php') ?>"><a href="<?= e(url('pages/firmen.php')) ?>">🏢 Firmen</a></li>
         <li class="<?= $is_active('bkp_codes.php') ?>"><a href="<?= e(url('pages/bkp_codes.php')) ?>">🛠️ BKP 2 Gebäude</a></li>
         <li class="<?= $is_active('wohnungen_liste.php') ?>"><a href="<?= e(url('pages/wohnungen_liste.php')) ?>">🏘️ Einheiten/Bestand</a></li>
+        <li class="<?= $is_active('mieterspiegel.php') ?>"><a href="<?= e(url('pages/mieterspiegel.php')) ?>">📈 Mieterspiegel</a></li>
       </ul>
     </li>
 
     <li class="<?= $is_active('pendenzen.php') ?>"><a href="<?= e(url('pages/pendenzen.php')) ?>">📜 Aufgaben</a></li>
+    <li class="<?= $is_active('abnahmen.php') ?>"><a href="<?= e(url('pages/abnahmen.php')) ?>">📝 Abnahmen &amp; Protokolle</a></li>
     <li class="<?= $is_active('terminprogramm.php') ?>"><a href="<?= e(url('pages/terminprogramm.php')) ?>">📅 Terminprogramm</a></li>
     <li class="has-submenu <?= ($is_active('files.php') || $is_active('ordner_vorlagen.php') || $is_active('ordner_verknuepfen.php')) ? 'submenu-open active' : '' ?>">
       <a href="<?= e(url('pages/files.php')) ?>">📁 Ablage &amp; Drive</a>

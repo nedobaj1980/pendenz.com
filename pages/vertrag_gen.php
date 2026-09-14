@@ -5,8 +5,8 @@ require_once __DIR__ . '/../includes/fs.php';
 
 require_login();
 
-$pid = (int)($_GET['projekt_id'] ?? 0);
-$uid = (int)($_GET['unit_id'] ?? 0);
+$pid = (int)($_GET['projekt_id'] ?? ($_GET['project_id'] ?? 0));
+$uid = (int)($_GET['unit_id'] ?? ($_GET['wohnung_id'] ?? ($_GET['id'] ?? 0)));
 
 if ($uid <= 0) {
     die("Ungültige Wohnungs-ID.");

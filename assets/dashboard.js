@@ -9,6 +9,14 @@
 
   const escapeHtml = (s) => s == null ? "" : String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
 
+  /* ===== Dynamic Endpoint Resolver ===== */
+  const getEndpoint = (dataAttr, fallbackRel) => {
+    const root = $('#sdash-root');
+    if (root && root.dataset[dataAttr]) return root.dataset[dataAttr];
+    const prefix = window.location.pathname.startsWith('/pendenz.com/') ? '/pendenz.com/' : '/';
+    return prefix + fallbackRel.replace(/^\//, '');
+  };
+
   /* ===== Notifications (Toast) ===== */
   const showToast = (msg, type = 'info') => {
     let container = $('.sd-toast-container');
@@ -146,7 +154,8 @@
 
       wrap.style.opacity = '0.4';
       try {
-        const res = await fetch("/pendenz.com/api/dashboard_upload.php", { method: "POST", body: fd });
+        const uploadUrl = getEndpoint('endpointUpload', 'api/dashboard_upload.php');
+        const res = await fetch(uploadUrl, { method: "POST", body: fd });
         const data = await res.json();
         if (data.success) {
           let img = wrap.querySelector("img");
@@ -285,7 +294,8 @@
 
       btn.disabled = true;
       try {
-        const res = await fetch('/pendenz.com/api/batch_update.php', {
+        const batchUrl = getEndpoint('endpointBatch', 'api/batch_update.php');
+        const res = await fetch(batchUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ table, updates, order, orderField: tableEl.dataset.orderField })
@@ -375,7 +385,8 @@
     const load = async () => {
       pendenzenBody.style.opacity = '0.5';
       try {
-        const res = await fetch(`/pendenz.com/api/pendenzen_preview.php?preset=${listsPreset.value}`);
+        const previewUrl = getEndpoint('endpointPreview', 'api/pendenzen_preview.php') + `?preset=${encodeURIComponent(listsPreset.value)}`;
+        const res = await fetch(previewUrl);
         const data = await res.json();
         render(Array.isArray(data.rows) ? data.rows : (Array.isArray(data) ? data : []));
       } catch (e) { console.error(e); }
@@ -414,7 +425,8 @@
   /* ===== Live Quick Insert ===== */
   const quickInsert = async (table, values, tbody, rowTemplate) => {
     try {
-      const res = await fetch('/pendenz.com/api/quick_insert.php', {
+      const insertUrl = getEndpoint('endpointQuick', 'api/quick_insert.php');
+      const res = await fetch(insertUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table, values })

@@ -11,12 +11,16 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 header('Content-Type: application/json; charset=utf-8');
-require_login();
 
-function ai_json_response(array $payload): void
+function ai_json_response(array $payload, int $code = 200): void
 {
+    http_response_code($code);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+if (!is_logged_in()) {
+    ai_json_response(['success' => false, 'error' => 'Sitzung abgelaufen. Bitte neu anmelden.'], 401);
 }
 
 function ai_normalize_context_url(string $url): string
@@ -228,27 +232,36 @@ try {
         }
 
         if (!empty($params['title'])) {
-            $actionPid = ai_extract_project_id($contextUrl);
+            $actionPid = !empty($params['project_id']) ? (int)$params['project_id'] : ai_extract_project_id($contextUrl);
             if ($actionPid <= 0) {
                 $actionPid = (int)($_SESSION['current_project_id'] ?? 1);
             }
 
             $titel = (string)$params['title'];
-            $datum = !empty($params['date']) ? (string)$params['date'] : date('Y-m-d');
+            $datum = !empty($params['due']) ? (string)$params['due'] : (!empty($params['date']) ? (string)$params['date'] : date('Y-m-d'));
+            $wichtigkeit = !empty($params['priority']) ? (int)$params['priority'] : (!empty($params['prio']) ? (int)$params['prio'] : 3);
+            $wohnungId = !empty($params['wohnung_id']) ? (int)$params['wohnung_id'] : null;
             $status = 'offen';
 
-            $pendenzStmt = $mysqli->prepare("INSERT INTO pendenzen (titel, projekt_id, erstellt_von, status, enddatum) VALUES (?, ?, ?, ?, ?)");
+            $pendenzStmt = $mysqli->prepare("INSERT INTO pendenzen (titel, projekt_id, wohnung_id, wichtigkeit, erstellt_von, status, enddatum) VALUES (?, ?, ?, ?, ?, ?, ?)");
             if ($pendenzStmt) {
-                $pendenzStmt->bind_param('siiss', $titel, $actionPid, $userId, $status, $datum);
+                $pendenzStmt->bind_param('siiiiss', $titel, $actionPid, $wohnungId, $wichtigkeit, $userId, $status, $datum);
                 $pendenzStmt->execute();
                 $newId = (int)$pendenzStmt->insert_id;
                 $pendenzStmt->close();
 
                 if ($newId > 0) {
-                    $actionResult = "✅ Pendenz #{$newId} ('{$titel}') wurde von gimi erfolgreich gespeichert!";
-                    $answer = str_replace($matches[0], "
+                    $detailUrl = page_url('pendenz_show.php?id=' . $newId);
+                    $actionResult = "\n\n<div class='ai-action-success' style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:10px; padding:12px 16px; margin-top:12px; color:#fff;'><strong>✅ Pendenz #{$newId} erfasst:</strong> <em>" . htmlspecialchars($titel, ENT_QUOTES, 'UTF-8') . "</em><br><a href='{$detailUrl}' style='color:#6ee7b7; font-weight:700; text-decoration:underline;'>👉 Pendenz #{$newId} öffnen & bearbeiten</a></div>";
+                    $answer = str_replace($matches[0], $actionResult, $answer);
 
-" . $actionResult, $answer);
+                    // Auch in DB aktualisieren
+                    $updMsg = $mysqli->prepare("UPDATE ai_messages SET content = ? WHERE chat_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1");
+                    if ($updMsg) {
+                        $updMsg->bind_param('si', $answer, $chatId);
+                        $updMsg->execute();
+                        $updMsg->close();
+                    }
                 }
             }
         }

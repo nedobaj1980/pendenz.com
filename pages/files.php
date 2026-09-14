@@ -7,7 +7,7 @@ require_once __DIR__ . '/../includes/authz.php';
 require_login();
 require_once __DIR__ . '/../includes/fs.php';
 
-$projectId = (int)($_GET['projekt_id'] ?? 0);
+$projectId = (int)($_GET['projekt_id'] ?? ($_GET['project_id'] ?? ($_GET['id'] ?? 0)));
 if ($projectId <= 0 && !empty($_SESSION['current_project_id'])) {
     $projectId = (int)$_SESSION['current_project_id'];
 }
