@@ -87,8 +87,6 @@ $kv_objekte  = $ctx_projekt_id
 $kv_wohnungen = $ctx_objekt_id
   ? kv_fetch_all($mysqli, "SELECT id, name as bezeichnung FROM wohnungen WHERE objekt_id=? ORDER BY name", [$ctx_objekt_id], 'i')
   : [];
-  ? kv_fetch_all($mysqli, "SELECT id, name as bezeichnung FROM wohnungen WHERE objekt_id=? ORDER BY name", [$ctx_objekt_id], 'i')
-  : [];
 // Aktiver Mieter (heute) für Wohnung
 $kv_mieter = [];
 if ($ctx_wohnung_id) {
@@ -1191,7 +1189,7 @@ if ($mRes) {
           <select id="batch_wohnung_id" style="max-width:220px; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
             <option value="0">-- Wohnung zuweisen --</option>
             <?php foreach ($allWohnungen as $aw): ?>
-              <option value="<?= (int)$aw['id'] ?>"><?= htmlspecialchars($aw['projekt_name'] . ' ➔ ' . $aw['name']) ?></option>
+              <option value="<?= (int)$aw['id'] ?>"><?= htmlspecialchars($aw['projekt_name'] . ' ➔ ' . ($aw['wohnung_name'] ?? $aw['name'] ?? '')) ?></option>
             <?php endforeach; ?>
           </select>
 
