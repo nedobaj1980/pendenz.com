@@ -720,7 +720,13 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         const pathParam = urlParams.get('path') || '';
 
         const mEl = document.querySelector('main') || document.body;
-        let pageContent = (mEl && mEl.innerText) ? mEl.innerText.substring(0, 1200) : '';
+        let pageContent = (mEl && mEl.innerText) ? mEl.innerText.substring(0, 2200) : '';
+        const tableContext = Array.from(document.querySelectorAll('table')).slice(0, 8).map((table, index) => ({
+            index,
+            headers: Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim()),
+            rows: Array.from(table.querySelectorAll('tbody tr')).slice(0, 12).map(tr => Array.from(tr.cells).map(td => td.innerText.trim()))
+        }));
+        const activeControls = Array.from(document.querySelectorAll('select,input')).filter(el => el.value).slice(0, 20).map(el => ({name: el.name || el.id, value: el.value}));
 
         try {
             const res = await fetch('<?= site_prefix() ?>api/ai_query.php', {
@@ -735,7 +741,10 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
                         projekt_id: pid,
                         wohnung_id: wid,
                         path: pathParam,
-                        content: pageContent
+                        content: pageContent,
+                        tables: tableContext,
+                        active_controls: activeControls,
+                        capabilities: ['navigate','filter_table','sort_table','prepare_create_pendenz']
                     }
                 })
             });
@@ -807,6 +816,16 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         }
     }
 
+    window.confirmGimiAction = async function(token, button) {
+        if (!token || !button) return;
+        button.disabled = true; button.textContent = '⏳ Speichere…';
+        try {
+            const res = await fetch('<?= site_prefix() ?>api/ai_confirm.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token})});
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
+            button.parentElement.innerHTML = '✅ Pendenz #' + data.id + ' gespeichert.';
+        } catch (e) { button.disabled = false; button.textContent = '✅ Jetzt speichern'; alert('gimi konnte die Aktion nicht speichern: ' + e.message); }
+    };
     const gsBtn = document.getElementById('gimi-send');
     if (gsBtn) gsBtn.addEventListener('click', () => handleGimiInput());
     const gI = document.getElementById('gimi-input');

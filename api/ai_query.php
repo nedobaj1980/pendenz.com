@@ -258,6 +258,15 @@ try {
         }
 
         if (!empty($params['title'])) {
+            // Schreibaktionen werden zuerst als Vorschau zurückgegeben.
+            if (empty($input['confirm_token'])) {
+                if (session_status() === PHP_SESSION_NONE) session_start();
+                $token = bin2hex(random_bytes(16));
+                $_SESSION['gimi_pending_action'] = ['token'=>$token, 'type'=>'CREATE_PENDENZ', 'params'=>$params, 'user_id'=>$userId, 'created_at'=>time()];
+                $preview = "\n\n<div class='gimi-action-preview' data-gimi-token='" . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . "'><strong>📝 Pendenz vorbereiten</strong><br>" . htmlspecialchars((string)$params['title'], ENT_QUOTES, 'UTF-8') . "<br><button type='button' onclick=\"confirmGimiAction('" . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . "',this)\">✅ Jetzt speichern</button></div>";
+                $answer = str_replace($matches[0], $preview, $answer);
+                ai_json_response(['success'=>true,'answer'=>$answer,'chat_id'=>$chatId,'pending_action'=>['type'=>'CREATE_PENDENZ','token'=>$token]]);
+            }
             $actionPid = !empty($params['project_id']) ? (int)$params['project_id'] : ai_extract_project_id($contextUrl);
             if ($actionPid <= 0) {
                 $actionPid = (int)($_SESSION['current_project_id'] ?? 1);
@@ -281,6 +290,7 @@ try {
                 }
             }
 
+            $status = 'offen';
             $pendenzStmt = $mysqli->prepare("INSERT INTO pendenzen (titel, projekt_id, wohnung_id, wichtigkeit, erstellt_von, status, enddatum) VALUES (?, ?, ?, ?, ?, ?, ?)");
             if ($pendenzStmt) {
                 $pendenzStmt->bind_param('siiiiss', $titel, $actionPid, $wohnungId, $wichtigkeit, $creatorId, $status, $datum);

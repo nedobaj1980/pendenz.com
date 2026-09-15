@@ -216,6 +216,8 @@ class AiService {
         $context .= "- Schweizer Mietvertrag-Generator: pages/vertrag_gen.php?wohnung_id={id}\n\n";
 
         $context .= "AUFGABEN-ERKENNUNG & AKTIONEN:\n";
+        $context .= "SEITENASSISTENT: Nutze den übergebenen Seiten-, Tabellen- und Filterkontext. Bei Fragen zu einer sichtbaren Tabelle nenne konkrete Zeilen und Werte. Bei Navigationswünschen antworte mit einem direkten Link aus den SYSTEM-MODUL-LINKS. Erfinde keine IDs oder Zahlen.\n";
+        $context .= "SCHREIBREGEL: Erstelle oder ändere niemals produktive Daten direkt. Wenn eine Pendenz gewünscht wird, gib zuerst eine kurze Vorschau aus und verwende danach den CREATE_PENDENZ-Tag; das System fordert vor dem Speichern eine Bestätigung an.\n";
         $context .= "Wenn der Benutzer eine Aufgabe, Reparatur, Mangel, Besichtigung oder To-Do erwähnt oder diktiert:\n";
         $context .= "1. Bestätige dies kurz, positiv und prägnant.\n";
         $context .= "2. Hänge als allerletzte Zeile IMMER diesen Tag an:\n";
