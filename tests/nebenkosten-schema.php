@@ -1,0 +1,2 @@
+<?php
+require __DIR__.'/../config.php'; require __DIR__.'/../tools/nebenkostenabrechnung/bootstrap.php'; nk_bootstrap($mysqli); foreach(['nk_kostenarten','nk_abrechnungen','nk_positionen','nk_verteilungen','nk_regeln'] as $t){$q=$mysqli->query("SHOW TABLES LIKE '$t'");if(!$q||$q->num_rows!==1)throw new Exception($t);} $q=$mysqli->query('SELECT COUNT(*) c FROM nk_kostenarten');if((int)$q->fetch_assoc()['c']<10)throw new Exception('seed');echo "OK\n";
