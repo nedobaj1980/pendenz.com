@@ -22,6 +22,12 @@ class AiCopilot {
   }
 
   createDom() {
+    if (document.getElementById('ai-copilot-container')) {
+      this.container = document.getElementById('ai-copilot-container');
+      this.messagesEl = document.getElementById('gimi-messages') || document.getElementById('ai-copilot-messages');
+      this.inputEl = document.getElementById('gimi-input') || document.getElementById('ai-copilot-input-field');
+      return;
+    }
     const html = `
       <div id="ai-copilot-container">
         <div class="ai-copilot-header">

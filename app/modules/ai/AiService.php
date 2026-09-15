@@ -19,13 +19,150 @@ class AiService {
     /**
      * Sammelt alle relevanten Informationen für den KI-Kontext.
      */
-    public function getSystemContext(string $currentPageUrl = ''): string {
+    public function getSystemContext(string $currentPageUrl = '', array $pageContext = []): string {
         $context = "Du bist 'gimi', der hochintelligente Schweizer PropTech KI-Copilot von pendenz.com (Helvetic Immo Treuhand).\n";
         $context .= "Dein Eigentümer und Verwalter ist Nedim Bajramoski. Du unterstützt ihn vollkommen selbstständig, kompetent und vorausschauend.\n";
-        $context .= "Du antwortest immer auf Deutsch, professionell, freundlich und präzise mit Schweizer Kontext (CHF, Schweizer Mietrecht, HEV-Praxis).\n";
+        $context .= "Du antwortest immer auf Deutsch, professionell, freundlich und präzise mit Schweizer Kontext (CHF, Schweizer Mietrecht gemäss OR Art. 253 ff., HEV-Praxis, Nebenkosten VMWG).\n";
         $context .= "Aktuelles Datum: " . date('d.m.Y') . " (" . date('l') . ").\n\n";
 
-        // Portfolio-Kennzahlen live aggregieren
+        // URL Parameter extrahieren
+        $urlQuery = parse_url($currentPageUrl, PHP_URL_QUERY);
+        $urlParams = [];
+        if ($urlQuery) {
+            parse_str($urlQuery, $urlParams);
+        }
+
+        $activeProjectId = (int)($pageContext['projekt_id'] ?? $urlParams['projekt_id'] ?? 0);
+        $activeWohnungId = (int)($pageContext['wohnung_id'] ?? $urlParams['wohnung_id'] ?? 0);
+        $activePath = (string)($pageContext['path'] ?? $urlParams['path'] ?? '');
+
+        // 1. Spezifischer Kontext wenn ein Projekt aktiv ist
+        if ($activeProjectId > 0) {
+            $pStmt = $this->db->prepare("SELECT id, name, root_path FROM projekte WHERE id = ?");
+            if ($pStmt) {
+                $pStmt->bind_param("i", $activeProjectId);
+                $pStmt->execute();
+                $pRow = $pStmt->get_result()->fetch_assoc();
+                $pStmt->close();
+
+                if ($pRow) {
+                    $context .= ">>> AKTUELLES PROJEKT IM FOKUS: ID {$activeProjectId} - {$pRow['name']} <<<\n";
+                    $context .= "- Drive Root: " . ($pRow['root_path'] ?: 'Standard') . "\n";
+
+                    // Einheiten & Mieter dieser Liegenschaft
+                    $uStmt = $this->db->prepare("
+                        SELECT w.id as w_id, w.name as w_name, w.zimmer, w.flaeche,
+                               wm.mieter_name, wm.mietzins_netto, wm.nk_akonto, wm.startdatum
+                        FROM wohnungen w
+                        JOIN objekte o ON w.objekt_id = o.id
+                        LEFT JOIN wohnung_mieter wm ON wm.wohnung_id = w.id AND wm.status = 'aktiv'
+                        WHERE o.projekt_id = ?
+                        ORDER BY w.name ASC
+                    ");
+                    if ($uStmt) {
+                        $uStmt->bind_param("i", $activeProjectId);
+                        $uStmt->execute();
+                        $uRes = $uStmt->get_result();
+                        $context .= "EINHEITEN & MIETER DIESER LIEGENSCHAFT:\n";
+                        while ($u = $uRes->fetch_assoc()) {
+                            $brutto = (float)$u['mietzins_netto'] + (float)$u['nk_akonto'];
+                            if (!empty($u['mieter_name'])) {
+                                $context .= "- {$u['w_name']} ({$u['zimmer']} Zi, {$u['flaeche']}m²): {$u['mieter_name']} | CHF " . number_format($brutto, 2, '.', "'") . "/Mt. (Netto: {$u['mietzins_netto']}, NK: {$u['nk_akonto']}) | seit {$u['startdatum']}\n";
+                            } else {
+                                $context .= "- {$u['w_name']} ({$u['zimmer']} Zi, {$u['flaeche']}m²): [FREI / LEERSTEHEND]\n";
+                            }
+                        }
+                        $uStmt->close();
+                    }
+
+                    // Falls im Google Drive Explorer (files.php) mit Ordnerpfad
+                    if ($activePath !== '') {
+                        $normPath = trim(str_replace('\\', '/', $activePath), '/');
+                        $context .= "\nAKTUELL GEÖFFNETER GOOGLE DRIVE ORDNER:\n";
+                        $context .= "- Relativer Pfad: {$normPath}\n";
+
+                        // Dateien aus fs_nodes
+                        $fStmt = $this->db->prepare("SELECT name, is_dir, size FROM fs_nodes WHERE project_id = ? AND parent_rel_path = ? ORDER BY is_dir DESC, name ASC LIMIT 35");
+                        $foundNodes = false;
+                        if ($fStmt) {
+                            $fStmt->bind_param("is", $activeProjectId, $normPath);
+                            $fStmt->execute();
+                            $fRes = $fStmt->get_result();
+                            if ($fRes && $fRes->num_rows > 0) {
+                                $foundNodes = true;
+                                $context .= "Dateien und Ordner an dieser Position:\n";
+                                while ($fn = $fRes->fetch_assoc()) {
+                                    $t = $fn['is_dir'] ? '[ORDNER]' : '[DATEI]';
+                                    $sz = $fn['is_dir'] ? '' : ' (' . round((int)$fn['size'] / 1024, 1) . ' KB)';
+                                    $context .= "  * {$t} {$fn['name']}{$sz}\n";
+                                }
+                            }
+                            $fStmt->close();
+                        }
+
+                        // Falls fs_nodes leer, physisch prüfen
+                        if (!$foundNodes && function_exists('project_root_path')) {
+                            $pRoot = project_root_path($this->db, $activeProjectId);
+                            if ($pRoot) {
+                                $fullD = $pRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $normPath);
+                                if (is_dir($fullD)) {
+                                    $scan = @scandir($fullD);
+                                    if ($scan) {
+                                        $context .= "Dateien auf Google Drive:\n";
+                                        foreach ($scan as $sf) {
+                                            if ($sf === '.' || $sf === '..') continue;
+                                            $isD = is_dir($fullD . DIRECTORY_SEPARATOR . $sf);
+                                            $context .= "  * " . ($isD ? '[ORDNER] ' : '[DATEI] ') . $sf . "\n";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Offene Pendenzen für diese Liegenschaft
+                    $pendProj = $this->db->query("SELECT id, titel, wichtigkeit, enddatum, status FROM pendenzen WHERE projekt_id = {$activeProjectId} AND deleted_at IS NULL AND (status IS NULL OR status NOT IN ('erledigt','archiviert')) ORDER BY wichtigkeit DESC, id DESC LIMIT 8");
+                    if ($pendProj && $pendProj->num_rows > 0) {
+                        $context .= "\nOFFENE PENDENZEN FÜR DIESE LIEGENSCHAFT:\n";
+                        while ($pp = $pendProj->fetch_assoc()) {
+                            $context .= "- Pendenz #{$pp['id']}: {$pp['titel']} (Prio {$pp['wichtigkeit']}, Fällig: {$pp['enddatum']})\n";
+                        }
+                    }
+                    $context .= "\n";
+                }
+            }
+        }
+
+        // 2. Spezifischer Kontext wenn eine Wohnung aktiv ist
+        if ($activeWohnungId > 0) {
+            $wStmt = $this->db->prepare("
+                SELECT w.id, w.name, w.zimmer, w.flaeche, o.name as objekt_name, p.id as p_id, p.name as p_name,
+                       wm.mieter_name, wm.mietzins_netto, wm.nk_akonto, wm.startdatum
+                FROM wohnungen w
+                JOIN objekte o ON w.objekt_id = o.id
+                JOIN projekte p ON o.projekt_id = p.id
+                LEFT JOIN wohnung_mieter wm ON wm.wohnung_id = w.id AND wm.status = 'aktiv'
+                WHERE w.id = ?
+            ");
+            if ($wStmt) {
+                $wStmt->bind_param("i", $activeWohnungId);
+                $wStmt->execute();
+                $wRow = $wStmt->get_result()->fetch_assoc();
+                $wStmt->close();
+                if ($wRow) {
+                    $context .= ">>> AKTUELLE WOHNUNG IM FOKUS: {$wRow['name']} ({$wRow['p_name']}) <<<\n";
+                    $context .= "- Typ: {$wRow['zimmer']} Zimmer, Fläche: {$wRow['flaeche']}m²\n";
+                    if (!empty($wRow['mieter_name'])) {
+                        $context .= "- Aktiver Mieter: {$wRow['mieter_name']} | Netto CHF {$wRow['mietzins_netto']} + NK CHF {$wRow['nk_akonto']} | seit {$wRow['startdatum']}\n";
+                    } else {
+                        $context .= "- Mieter-Status: FREI / LEERSTAND\n";
+                    }
+                    $context .= "\n";
+                }
+            }
+        }
+
+        // 3. Portfolio-Kennzahlen live aggregieren
         $pCount = 0; $wCount = 0; $mCount = 0; $sollNetto = 0.0; $sollNk = 0.0; $pendCount = 0;
         
         $pRes = $this->db->query("SELECT COUNT(*) FROM projekte");
@@ -47,12 +184,12 @@ class AiService {
         $pendRes = $this->db->query("SELECT COUNT(*) FROM pendenzen WHERE (status IS NULL OR status NOT IN ('erledigt','archiviert')) AND deleted_at IS NULL");
         if ($pendRes) $pendCount = (int)$pendRes->fetch_row()[0];
 
-        $context .= "PORTFOLIO-KENNZAHLEN (LIVE):\n";
+        $context .= "PORTFOLIO-GESAMTÜBERSICHT (LIVE):\n";
         $context .= "- Liegenschaften: {$pCount}\n";
-        $context .= "- Einheiten total: {$wCount} (davon {$mCount} vermietet, {$leerstand} leerstehend/frei)\n";
+        $context .= "- Einheiten total: {$wCount} (davon {$mCount} vermietet, {$leerstand} leerstehend)\n";
         $context .= "- Monatlicher Soll-Mietertrag: CHF " . number_format($sollBrutto, 2, '.', "'") . " (Netto: CHF " . number_format($sollNetto, 2, '.', "'") . ", NK: CHF " . number_format($sollNk, 2, '.', "'") . ")\n";
-        $context .= "- Jahres-Mietertrag: CHF " . number_format($sollBrutto * 12, 2, '.', "'") . "\n";
-        $context .= "- Offene Pendenzen/Mängel: {$pendCount}\n\n";
+        $context .= "- Jahres-Sollertrag: CHF " . number_format($sollBrutto * 12, 2, '.', "'") . "\n";
+        $context .= "- Offene Pendenzen total: {$pendCount}\n\n";
 
         // Alle Liegenschaften auflisten
         $context .= "ALLE LIEGENSCHAFTEN (PROJEKTE):\n";
@@ -70,39 +207,21 @@ class AiService {
             $context .= "\n";
         }
 
-        // Aktive Mieterübersicht (kompakt)
-        $tList = $this->db->query("
-            SELECT p.id as p_id, p.name as p_name, w.id as w_id, w.name as w_name, wm.mieter_name, wm.mietzins_netto, wm.nk_akonto, wm.startdatum
-            FROM wohnung_mieter wm
-            JOIN wohnungen w ON wm.wohnung_id = w.id
-            JOIN objekte o ON w.objekt_id = o.id
-            JOIN projekte p ON o.projekt_id = p.id
-            WHERE wm.status = 'aktiv'
-            ORDER BY p.id ASC, w.name ASC
-        ");
-        if ($tList && $tList->num_rows > 0) {
-            $context .= "AKTIVE MIETER (AUSZUG):\n";
-            while ($t = $tList->fetch_assoc()) {
-                $brutto = (float)$t['mietzins_netto'] + (float)$t['nk_akonto'];
-                $context .= "- Liegenschaft ID {$t['p_id']} ({$t['p_name']}) | {$t['w_name']}: {$t['mieter_name']} | CHF " . number_format($brutto, 2, '.', "'") . "/Mt. | seit {$t['startdatum']}\n";
-            }
-            $context .= "\n";
-        }
-
         $context .= "SYSTEM-MODULE & DIREKT-LINKS:\n";
-        $context .= "- Mieterspiegel: pages/mieterspiegel.php (oder mit ?projekt_id={id})\n";
-        $context .= "- Liegenschaftsabrechnung & Steuern: tools/liegenschaftsabrechnung/index.php (oder ?projekt_id={id})\n";
-        $context .= "- Google Drive Explorer: pages/files.php (oder ?projekt_id={id})\n";
-        $context .= "- Pendenzen & Mängel: pages/pendenzen.php (oder ?projekt_id={id})\n";
+        $context .= "- Mieterspiegel: pages/mieterspiegel.php?projekt_id={id}\n";
+        $context .= "- Liegenschaftsabrechnung & Steuern: tools/liegenschaftsabrechnung/index.php?projekt_id={id}\n";
+        $context .= "- Google Drive Explorer: pages/files.php?projekt_id={id}\n";
+        $context .= "- Pendenzen & Mängel: pages/pendenzen.php?projekt_id={id}\n";
         $context .= "- Wohnungsabnahmeprotokoll: pages/wohnungsabnahme_protokoll.php?wohnung_id={id}\n";
         $context .= "- Schweizer Mietvertrag-Generator: pages/vertrag_gen.php?wohnung_id={id}\n\n";
 
         $context .= "AUFGABEN-ERKENNUNG & AKTIONEN:\n";
         $context .= "Wenn der Benutzer eine Aufgabe, Reparatur, Mangel, Besichtigung oder To-Do erwähnt oder diktiert:\n";
-        $context .= "1. Bestätige dies kurz und prägnant in 1 bis 2 Sätzen.\n";
-        $context .= "2. Hänge als allerletzte Zeile IMMER und zwingend diesen Tag an:\n";
-        $context .= "[ACTION:CREATE_PENDENZ|title=Prägnanter Titel|project_id=ID|wohnung_id=ID|due=YYYY-MM-DD|priority=5]\n";
-        $context .= "(priority: 5=dringend/hoch, 3=normal, 1=niedrig; project_id=1-12 passend zur Liegenschaft).\n\n";
+        $context .= "1. Bestätige dies kurz, positiv und prägnant.\n";
+        $context .= "2. Hänge als allerletzte Zeile IMMER diesen Tag an:\n";
+        $targetPid = $activeProjectId > 0 ? $activeProjectId : 1;
+        $context .= "[ACTION:CREATE_PENDENZ|title=Prägnanter Titel|project_id={$targetPid}|wohnung_id={$activeWohnungId}|due=YYYY-MM-DD|priority=5]\n";
+        $context .= "(priority: 5=dringend/hoch, 3=normal, 1=niedrig).\n\n";
 
         // Training-Daten aus der DB holen
         $sql = "SELECT title, content, scope_url FROM ai_training WHERE is_active = 1 AND (user_id IS NULL";
@@ -131,89 +250,78 @@ class AiService {
             return $this->getMockResponse($prompt, $pageContext);
         }
 
-        // Neueste, intelligenteste Gemini-Modelle (Google AI Studio Free Tier)
+        // Höchstintelligente, schnelle & 100% kostenlose Modelle (Google AI Studio Free Tier)
         $models = [
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-flash-latest",
-            "gemini-pro-latest"
+            "gemini-3.1-flash-lite", // Ultraschnell (~1-2s), hochintelligent, 100% free
+            "gemini-flash-latest",   // Offizielles Google Flash Produktionsmodell
+            "gemini-3.6-flash",      // Deep Reasoning Flash
+            "gemini-3.5-flash",      // Zuverlässiger Fallback
+            "gemini-3-flash-preview"
         ]; 
         $lastResponse = '';
         $lastHttpCode = 0;
         $lastCurlErr = '';
 
+        $currentPage = $pageContext['url'] ?? '';
+        $systemContext = $this->getSystemContext($currentPage, $pageContext);
+
+        $contents = [];
+        $slicedHistory = array_slice($history, -6);
+        foreach ($slicedHistory as $msg) {
+            $contents[] = [
+                "role" => ($msg['role'] === 'user' ? 'user' : 'model'),
+                "parts" => [["text" => (string)$msg['content']]]
+            ];
+        }
+        
+        // Aktuelle Anfrage hinzufügen
+        $contents[] = [
+            "role" => "user",
+            "parts" => [["text" => $prompt]]
+        ];
+
+        $postData = [
+            "system_instruction" => [
+                "parts" => [["text" => $systemContext]]
+            ],
+            "contents" => $contents,
+            "generationConfig" => [
+                "temperature" => 0.6,
+                "maxOutputTokens" => 4096,
+                "topP" => 0.95
+            ]
+        ];
+
+        $jsonPayload = json_encode($postData);
+
         foreach ($models as $currentModel) {
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$currentModel}:generateContent?key=" . $this->apiKey;
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 12);
             
-            $currentPage = $pageContext['url'] ?? '';
-            $systemContext = $this->getSystemContext($currentPage);
+            $lastResponse = curl_exec($ch);
+            $lastHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $lastCurlErr  = curl_error($ch);
 
-            $contents = [];
-            $slicedHistory = array_slice($history, -6);
-            foreach ($slicedHistory as $msg) {
-                $contents[] = [
-                    "role" => ($msg['role'] === 'user' ? 'user' : 'model'),
-                    "parts" => [["text" => (string)$msg['content']]]
-                ];
-            }
-            
-            // Aktuelle Anfrage hinzufügen
-            $contents[] = [
-                "role" => "user",
-                "parts" => [["text" => $prompt]]
-            ];
-
-            $postData = [
-                "system_instruction" => [
-                    "parts" => [["text" => $systemContext]]
-                ],
-                "contents" => $contents,
-                "generationConfig" => [
-                    "temperature" => 0.6,
-                    "maxOutputTokens" => 4096,
-                    "topP" => 0.95
-                ]
-            ];
-
-            $maxRetries = 4;
-            $attempt = 0;
-
-            while ($attempt < $maxRetries) {
-                $attempt++;
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-                
-                $lastResponse = curl_exec($ch);
-                $lastHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $lastCurlErr  = curl_error($ch);
-                // curl_close($ch); // Deprecated since PHP 8.x
-
-
-                // Bei 503 (Overloaded) oder 429 (Rate Limit) kurz warten und erneut versuchen
-                if (in_array($lastHttpCode, [503, 429])) {
-                    usleep(1000000 * $attempt); // Progressiv warten (1s, 2s, 3s...)
-                    continue;
-                }
+            // Wenn Erfolg (200), sofort aussteigen!
+            if ($lastHttpCode === 200 && !empty($lastResponse)) {
                 break;
             }
-
-            // Wenn wir einen Erfolg (200) haben, verlassen wir die Model-Schleife
-            if ($lastHttpCode === 200) break;
             
-            // Falls 429 -> nächstes Modell probieren
-            if ($lastHttpCode === 429) continue;
+            // Bei 503 (Overloaded) oder 429 (Rate Limit) oder 404 sofort zum nächsten Modell springen!
+            continue;
         }
 
         if ($lastHttpCode !== 200) {
-            // Falls ultimativ gescheitert (Quota voll), nutze den Mock-Modus statt Fehlermeldung
+            // Falls ultimativ gescheitert (Quota voll), nutze den lokalen Intelligenz-Modus
             if ($lastHttpCode === 429 || $lastHttpCode === 503 || $lastHttpCode === 0) {
                 return $this->getMockResponse($prompt, $pageContext, 'quota');
             }

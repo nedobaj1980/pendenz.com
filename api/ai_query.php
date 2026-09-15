@@ -40,7 +40,7 @@ function ai_normalize_context_url(string $url): string
     $port = isset($parts['port']) ? ':' . $parts['port'] : '';
     $path = $parts['path'] ?? '';
 
-    $keepKeys = ['projekt_id', 'id', 'wohnung_id', 'objekt_id'];
+    $keepKeys = ['projekt_id', 'id', 'wohnung_id', 'objekt_id', 'path'];
     $queryParams = [];
 
     if (!empty($parts['query'])) {
@@ -83,6 +83,21 @@ function ai_extract_project_id(string $contextUrl): int
 
     parse_str($query, $queryParams);
     return (int)($queryParams['projekt_id'] ?? 0);
+}
+
+function ai_extract_query_param(string $contextUrl, string $paramName): string
+{
+    if ($contextUrl === '') {
+        return '';
+    }
+
+    $query = parse_url($contextUrl, PHP_URL_QUERY);
+    if (!$query) {
+        return '';
+    }
+
+    parse_str($query, $queryParams);
+    return (string)($queryParams[$paramName] ?? '');
 }
 
 $rawInput = file_get_contents('php://input');
@@ -208,6 +223,17 @@ $apiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : '';
 
 try {
     $context['url'] = $contextUrl;
+    if (empty($context['projekt_id']) && $pid > 0) {
+        $context['projekt_id'] = $pid;
+    }
+    $wId = (int)ai_extract_query_param($contextUrl, 'wohnung_id');
+    if ($wId > 0 && empty($context['wohnung_id'])) {
+        $context['wohnung_id'] = $wId;
+    }
+    $pPath = ai_extract_query_param($contextUrl, 'path');
+    if ($pPath !== '' && empty($context['path'])) {
+        $context['path'] = $pPath;
+    }
 
     $ai = new AiService($mysqli, $apiKey, $userId);
     $answer = $ai->queryGemini($prompt, $context, $history);
@@ -241,11 +267,23 @@ try {
             $datum = !empty($params['due']) ? (string)$params['due'] : (!empty($params['date']) ? (string)$params['date'] : date('Y-m-d'));
             $wichtigkeit = !empty($params['priority']) ? (int)$params['priority'] : (!empty($params['prio']) ? (int)$params['prio'] : 3);
             $wohnungId = !empty($params['wohnung_id']) ? (int)$params['wohnung_id'] : null;
-            $status = 'offen';
+            $creatorId = null;
+            if ($userId > 0) {
+                $uChk = $mysqli->prepare("SELECT id FROM benutzer WHERE id = ? LIMIT 1");
+                if ($uChk) {
+                    $uChk->bind_param("i", $userId);
+                    $uChk->execute();
+                    $uRes = $uChk->get_result();
+                    if ($uRes && $uRes->num_rows > 0) {
+                        $creatorId = $userId;
+                    }
+                    $uChk->close();
+                }
+            }
 
             $pendenzStmt = $mysqli->prepare("INSERT INTO pendenzen (titel, projekt_id, wohnung_id, wichtigkeit, erstellt_von, status, enddatum) VALUES (?, ?, ?, ?, ?, ?, ?)");
             if ($pendenzStmt) {
-                $pendenzStmt->bind_param('siiiiss', $titel, $actionPid, $wohnungId, $wichtigkeit, $userId, $status, $datum);
+                $pendenzStmt->bind_param('siiiiss', $titel, $actionPid, $wohnungId, $wichtigkeit, $creatorId, $status, $datum);
                 $pendenzStmt->execute();
                 $newId = (int)$pendenzStmt->insert_id;
                 $pendenzStmt->close();

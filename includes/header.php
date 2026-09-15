@@ -74,7 +74,6 @@ $title = isset($PAGE_TITLE) && $PAGE_TITLE ? ($PAGE_TITLE . ' – pendenz.com') 
 
   <!-- (optional) globale JS -->
   <script src="<?= e(asset_url('js/notifications_dropdown.js')) ?>" defer></script>
-  <script src="<?= e(asset_url('js/ai_assistant.js')) ?>" defer></script>
   <!-- Prevent FOUC: apply saved image sizes before page renders -->
   <script>(function(){
     var de = localStorage.getItem('p_img_desktop');

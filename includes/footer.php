@@ -14,26 +14,34 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
 <!-- gimi AI Global Assistant Sidebar (Co-Pilot) -->
 <div id="ai-copilot-container">
     <div class="ai-copilot-header">
-        <h3>
+        <div style="display:flex; align-items:center; gap:8px;">
             <span class="status-dot"></span>
-            <strong>gimi</strong> <span style="opacity:0.6;font-weight:400;">| Co-Pilot</span>
-        </h3>
-        <button style="background:none; border:0; color:#fff; cursor:pointer; font-size:18px;"
-            onclick="toggleGimi()">✕</button>
+            <strong style="font-size:15px; color:#fff; letter-spacing:0.5px;">gimi</strong>
+            <span style="opacity:0.6;font-weight:400; font-size:13px; color:#94a3b8;">| Co-Pilot</span>
+            <span class="gimi-model-badge">⚡ Gemini Intelligence</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <button class="gimi-head-btn" onclick="clearGimiChat()" title="Chat-Verlauf leeren">🗑️</button>
+            <button class="gimi-head-btn" onclick="toggleGimi()" title="Schliessen">✕</button>
+        </div>
     </div>
 
     <div class="ai-messages" id="gimi-messages">
-        <div class="ai-context-chip">📍 <?= h($PAGE_TITLE ?? 'Seiten-Kontext geladen') ?></div>
-        <div class="ai-msg bot">Hallo! Ich bin gimi. Ich habe den Kontext dieser Seite analysiert. Wie kann ich dir hier
-            helfen?</div>
+        <div class="ai-context-chip" id="gimi-context-chip">📍 <?= h($PAGE_TITLE ?? 'Seiten-Kontext geladen') ?></div>
+        <div id="gimi-quick-chips" class="gimi-quick-chips"></div>
+        <div class="ai-msg bot" id="gimi-initial-msg">
+            Grüezi! Ich bin <strong>gimi</strong>, dein persönlicher Schweizer PropTech KI-Assistent. Ich habe den Kontext dieser Seite analysiert. Wie kann ich dir helfen?
+        </div>
     </div>
 
     <div class="ai-copilot-input">
-        <div id="gimi-typing" class="ai-typing">gimi denkt nach...</div>
+        <div id="gimi-typing" class="ai-typing">
+            <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span> gimi denkt nach...
+        </div>
         <div class="ai-input-wrapper">
-            <button id="gimi-mic" class="ai-mic-btn" onclick="startGimiVoice()" title="Sprachsteuerung">🎤</button>
-            <input type="text" id="gimi-input" placeholder="Frag gimi..." autocomplete="off">
-            <button id="gimi-send" class="ai-send-btn">🚀</button>
+            <button id="gimi-mic" class="ai-mic-btn" onclick="startGimiVoice()" title="Spracheingabe / Diktat">🎤</button>
+            <input type="text" id="gimi-input" placeholder="Frag gimi oder diktiere eine Pendenz..." autocomplete="off">
+            <button id="gimi-send" class="ai-send-btn" title="Senden">🚀</button>
         </div>
     </div>
 </div>
@@ -393,7 +401,7 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
     function getCleanUrl() {
         const u = new URL(window.location.href);
         const params = new URLSearchParams();
-        const keep = ['projekt_id', 'id', 'wohnung_id', 'objekt_id'];
+        const keep = ['projekt_id', 'id', 'wohnung_id', 'objekt_id', 'path'];
 
         u.searchParams.forEach((val, key) => {
             if (keep.includes(key) && val !== '' && val !== '0') {
@@ -409,10 +417,93 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         return 'gimi_hist_' + encodeURIComponent(getCleanUrl());
     }
 
+    function formatGimiMarkdown(text) {
+        if (!text) return '';
+        let str = String(text);
+
+        // Vorformatierte HTML-Blöcke schützen (z.B. Pendenz-Erfolgs-Boxen)
+        const preserved = [];
+        str = str.replace(/<div class=['"]ai-action-success[\s\S]*?<\/div>/gi, (match) => {
+            preserved.push(match);
+            return `%%%GIMI_PRESERVED_${preserved.length - 1}%%%`;
+        });
+
+        // HTML-Sonderzeichen maskieren (XSS-Schutz)
+        str = str.replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;");
+
+        // Code-Blöcke: ```code```
+        str = str.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gi, (match, lang, code) => {
+            return `<pre class="gimi-code-block"><code>${code.trim()}</code></pre>`;
+        });
+
+        // Inline Code: `code`
+        str = str.replace(/`([^`]+)`/g, '<code class="gimi-inline-code">$1</code>');
+
+        // Überschriften: ###, ##, #
+        str = str.replace(/^### (.*$)/gim, '<div class="gimi-h4">$1</div>');
+        str = str.replace(/^## (.*$)/gim, '<div class="gimi-h3">$1</div>');
+        str = str.replace(/^# (.*$)/gim, '<div class="gimi-h2">$1</div>');
+
+        // Fett: **text**
+        str = str.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Kursiv: *text*
+        str = str.replace(/(^|[^\*])\*([^\*]+)\*([^\*]|$)/g, '$1<em>$2</em>$3');
+
+        // Horizontale Trennlinie: ---
+        str = str.replace(/^---$/gim, '<hr class="gimi-hr">');
+
+        // Ungeordnete Listen: * oder -
+        str = str.replace(/^\s*[\*\-]\s+(.*$)/gim, '<li class="gimi-li">$1</li>');
+        str = str.replace(/((?:<li class="gimi-li">.*<\/li>\s*)+)/gims, '<ul class="gimi-ul">$1</ul>');
+
+        // Geordnete Listen: 1. text
+        str = str.replace(/^\s*(\d+)\.\s+(.*$)/gim, '<li value="$1" class="gimi-li-num">$2</li>');
+        str = str.replace(/((?:<li value="\d+" class="gimi-li-num">.*<\/li>\s*)+)/gims, '<ol class="gimi-ol">$1</ol>');
+
+        // Markdown-Links: [Text](url)
+        str = str.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, href) => {
+            let cleanHref = href.trim();
+            // Relative Pfade innerhalb pendenz.com anpassen
+            if (!cleanHref.startsWith('http://') && !cleanHref.startsWith('https://') && !cleanHref.startsWith('/')) {
+                cleanHref = '<?= site_prefix() ?>' + cleanHref;
+            }
+            return `<a href="${cleanHref}" class="gimi-link" target="_self">${label} ↗</a>`;
+        });
+
+        // Zeilenumbrüche
+        str = str.replace(/\n/g, '<br>');
+        // Unnötige <br> um Listen und Blöcke entfernen
+        str = str.replace(/<ul class="gimi-ul"><br>/g, '<ul class="gimi-ul">')
+                 .replace(/<\/li><br>/g, '</li>')
+                 .replace(/<\/ul><br>/g, '</ul>')
+                 .replace(/<ol class="gimi-ol"><br>/g, '<ol class="gimi-ol">')
+                 .replace(/<\/ol><br>/g, '</ol>');
+
+        // Geschützte Blöcke wieder einsetzen
+        preserved.forEach((pBlock, idx) => {
+            str = str.replace(`%%%GIMI_PRESERVED_${idx}%%%`, pBlock);
+        });
+
+        return str;
+    }
+
+    function renderMessage(role, text) {
+        const log = document.getElementById('gimi-messages');
+        if (!log) return;
+        const div = document.createElement('div');
+        div.className = 'ai-msg ' + (role === 'user' ? 'user' : 'bot');
+        div.innerHTML = formatGimiMarkdown(text || '');
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+    }
+
     function getRenderedGimiMessages() {
         return Array.from(document.querySelectorAll('#gimi-messages .ai-msg')).map((node) => ({
             role: node.classList.contains('user') ? 'user' : 'assistant',
-            content: node.innerHTML.replace(/<br\s*\/?>/gi, String.fromCharCode(10))
+            content: node.getAttribute('data-raw') || node.innerHTML
         }));
     }
 
@@ -427,14 +518,73 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         }
     }
 
-    function renderMessage(role, text) {
+    function clearGimiChat() {
+        try {
+            sessionStorage.removeItem(getGimiStorageKey());
+        } catch (e) {}
+        gimiChatId = 0;
         const log = document.getElementById('gimi-messages');
-        if (!log) return;
-        const div = document.createElement('div');
-        div.className = 'ai-msg ' + (role === 'user' ? 'user' : 'bot');
-        div.innerHTML = String(text || '').split(String.fromCharCode(10)).join('<br>');
-        log.appendChild(div);
-        log.scrollTop = log.scrollHeight;
+        if (log) {
+            log.innerHTML = `
+                <div class="ai-context-chip" id="gimi-context-chip">📍 ${document.title}</div>
+                <div id="gimi-quick-chips" class="gimi-quick-chips"></div>
+                <div class="ai-msg bot">
+                    Chat zurückgesetzt. Ich bin bereit für deine Fragen zur Liegenschaftsverwaltung oder neue Aufgaben!
+                </div>
+            `;
+            renderSuggestionChips();
+        }
+    }
+
+    function renderSuggestionChips() {
+        const chipsContainer = document.getElementById('gimi-quick-chips');
+        if (!chipsContainer) return;
+        chipsContainer.innerHTML = '';
+
+        const path = window.location.pathname;
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasProject = urlParams.has('projekt_id');
+        const hasFolder = urlParams.has('path');
+
+        let suggestions = [];
+
+        if (path.includes('files.php')) {
+            if (hasFolder) {
+                suggestions.push({ label: '📂 Dateien in diesem Ordner?', prompt: 'Welche Dateien oder Rechnungen befinden sich aktuell in diesem geöffneten Ordner?' });
+            } else {
+                suggestions.push({ label: '📁 Ordnerstruktur anzeigen', prompt: 'Erkläre mir die Google Drive Ordnerstruktur für dieses Projekt.' });
+            }
+            suggestions.push({ label: '👥 Mieter dieser Liegenschaft', prompt: 'Wer sind die aktuellen Mieter dieser Liegenschaft und wie hoch sind die Mieten?' });
+            suggestions.push({ label: '➕ Pendenz erfassen', prompt: 'Erfasse eine Pendenz: Dokumente in diesem Ordner prüfen bis nächsten Freitag' });
+            suggestions.push({ label: '💰 Soll-Mietertrag', prompt: 'Wie hoch ist der monatliche und jährliche Mietertrag dieser Liegenschaft?' });
+        } else if (path.includes('mieterspiegel.php')) {
+            suggestions.push({ label: '📊 Mieter & Mietzinse', prompt: 'Fasse mir den Mieterspiegel dieser Liegenschaft zusammen.' });
+            suggestions.push({ label: '⚠️ Leerstände prüfen', prompt: 'Gibt es in dieser Liegenschaft aktuell freie oder leerstehende Wohnungen?' });
+            suggestions.push({ label: '📝 Neuen Vertrag erstellen', prompt: 'Wie bereite ich am schnellsten einen neuen Mietvertrag vor?' });
+        } else if (path.includes('pendenzen.php')) {
+            suggestions.push({ label: '🚨 Dringende Aufgaben', prompt: 'Welche Pendenzen haben aktuell die höchste Priorität und müssen erledigt werden?' });
+            suggestions.push({ label: '🎙️ Pendenz diktieren', prompt: 'Erfasse eine Pendenz: Heizung prüfen und Service aufbieten' });
+            suggestions.push({ label: '📈 Pendenzen nach Liegenschaft', prompt: 'Gib mir eine Übersicht über offene Aufgaben sortiert nach Liegenschaften.' });
+        } else if (path.includes('liegenschaftsabrechnung')) {
+            suggestions.push({ label: '📊 Abrechnungs-Status', prompt: 'Wie ist der aktuelle Stand der Liegenschaftsabrechnung?' });
+            suggestions.push({ label: '🧾 Steuerabzug Pauschale vs Effektiv', prompt: 'Erkläre mir die optimale Schweizer Steuerabzug-Strategie (10%/20% Pauschale vs. effektive Kosten).' });
+        } else {
+            suggestions.push({ label: '📈 Portfolio-Status', prompt: 'Gib mir einen kompakten Überblick über alle meine Liegenschaften und Einheiten.' });
+            suggestions.push({ label: '💰 Monatlicher Mietertrag', prompt: 'Wie hoch ist der gesamte monatliche Soll-Mietertrag aller Liegenschaften?' });
+            suggestions.push({ label: '🚨 Offene Pendenzen', prompt: 'Welche Aufgaben sind aktuell im gesamten Portfolio offen?' });
+            suggestions.push({ label: '🎙️ Pendenz diktieren', prompt: 'Erfasse eine neue Pendenz' });
+        }
+
+        suggestions.forEach(s => {
+            const btn = document.createElement('button');
+            btn.className = 'gimi-chip';
+            btn.innerText = s.label;
+            btn.onclick = (e) => {
+                e.preventDefault();
+                handleGimiInput(s.prompt);
+            };
+            chipsContainer.appendChild(btn);
+        });
     }
 
     async function toggleGimi(forceOpen = null) {
@@ -448,7 +598,20 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         const isActive = panel.classList.contains('active');
         localStorage.setItem('gimi-sidebar-active', isActive ? '1' : '0');
 
+        // Blue legacy chat-widget ausblenden/einblenden um visuelle Kollision zu verhindern
+        const chatWidget = document.getElementById('chat-widget');
+        if (chatWidget) {
+            chatWidget.style.display = isActive ? 'none' : '';
+        }
+
+        const navBtn = document.getElementById('ai-toggle-btn');
+        if (navBtn) {
+            if (isActive) navBtn.classList.add('active');
+            else navBtn.classList.remove('active');
+        }
+
         if (isActive) {
+            renderSuggestionChips();
             const input = document.getElementById('gimi-input');
             if (input) input.focus();
             if (!gimiLoaded) loadGimiHistory();
@@ -463,9 +626,21 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
             try {
                 const data = JSON.parse(cached);
                 const log = document.getElementById('gimi-messages');
-                if (log) {
+                if (log && Array.isArray(data.messages) && data.messages.length > 0) {
                     log.innerHTML = '';
-                    (data.messages || []).forEach(m => renderMessage(m.role, m.content));
+                    // Header chip & quick chips wiederherstellen
+                    const chipDiv = document.createElement('div');
+                    chipDiv.className = 'ai-context-chip';
+                    chipDiv.innerText = '📍 ' + document.title;
+                    log.appendChild(chipDiv);
+
+                    const qcDiv = document.createElement('div');
+                    qcDiv.id = 'gimi-quick-chips';
+                    qcDiv.className = 'gimi-quick-chips';
+                    log.appendChild(qcDiv);
+                    renderSuggestionChips();
+
+                    data.messages.forEach(m => renderMessage(m.role, m.content));
                     gimiChatId = parseInt(data.chat_id || 0, 10) || 0;
                     gimiLoaded = true;
                     return;
@@ -487,13 +662,25 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
             const data = await res.json();
             if (data.success) {
                 const log = document.getElementById('gimi-messages');
-                if (log) log.innerHTML = '';
+                if (log) {
+                    log.innerHTML = '';
+                    const chipDiv = document.createElement('div');
+                    chipDiv.className = 'ai-context-chip';
+                    chipDiv.innerText = '📍 ' + document.title;
+                    log.appendChild(chipDiv);
+
+                    const qcDiv = document.createElement('div');
+                    qcDiv.id = 'gimi-quick-chips';
+                    qcDiv.className = 'gimi-quick-chips';
+                    log.appendChild(qcDiv);
+                    renderSuggestionChips();
+                }
                 gimiChatId = parseInt(data.chat_id || 0, 10) || 0;
 
                 if (Array.isArray(data.messages) && data.messages.length > 0) {
                     data.messages.forEach(m => renderMessage(m.role, m.content));
                 } else {
-                    renderMessage('assistant', 'Hallo! Ich bin gimi. Ich habe den Kontext dieser Seite analysiert. Wie kann ich dir hier helfen?');
+                    renderMessage('assistant', 'Grüezi! Ich bin **gimi**, dein intelligenter PropTech KI-Assistent. Ich habe den Kontext dieser Seite analysiert. Wie kann ich dir helfen?');
                 }
 
                 saveGimiState();
@@ -505,6 +692,7 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        renderSuggestionChips();
         if (localStorage.getItem('gimi-sidebar-active') === '1') {
             toggleGimi(true);
         }
@@ -516,24 +704,23 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         const typing = document.getElementById('gimi-typing');
         const text = textOverride || (input && input.value ? input.value.trim() : '');
         if (!text || !log) return;
-        if (!textOverride) input.value = '';
+        if (!textOverride && input) input.value = '';
 
         renderMessage('user', text);
         saveGimiState();
 
-        if (typing) typing.style.display = 'block';
-
-        // Tiefen-Analyse anfordern, wenn Keywords fallen
-        const needsDeepAnalysis = /analysier|was sehe|seite|inhalt|aufbau/i.test(text);
-        const mEl = document.querySelector('main');
-        let pageContent = (mEl && mEl.innerText) ? mEl.innerText.substring(0, 1500) : '';
-
-        if (needsDeepAnalysis) {
-            // Bei Analyse-Wunsch nehmen wir mehr Kontext mit (z.B. Buttons und Formular-Label)
-            const interactive = Array.from(document.querySelectorAll('button, a, label, h1, h2, h3'))
-                .map(el => `[${el.tagName}: ${el.innerText.trim()}]`).join(' ');
-            pageContent = "DEEP_SCAN: " + interactive + " CONTENT: " + pageContent;
+        if (typing) {
+            typing.style.display = 'flex';
+            log.scrollTop = log.scrollHeight;
         }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const pid = urlParams.get('projekt_id') || '';
+        const wid = urlParams.get('wohnung_id') || '';
+        const pathParam = urlParams.get('path') || '';
+
+        const mEl = document.querySelector('main') || document.body;
+        let pageContent = (mEl && mEl.innerText) ? mEl.innerText.substring(0, 1200) : '';
 
         try {
             const res = await fetch('<?= site_prefix() ?>api/ai_query.php', {
@@ -545,6 +732,9 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
                     context: {
                         url: getCleanUrl(),
                         title: document.title,
+                        projekt_id: pid,
+                        wohnung_id: wid,
+                        path: pathParam,
                         content: pageContent
                     }
                 })
@@ -557,29 +747,55 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
                 renderMessage('assistant', data.answer || '');
                 saveGimiState();
             } else {
-                renderMessage('bot', 'Fehler: ' + (data.error || 'Unbekannter Fehler'));
+                renderMessage('bot', '⚠️ ' + (data.error || 'Es gab einen Fehler bei der KI-Anfrage.'));
             }
         } catch (err) {
             if (typing) typing.style.display = 'none';
+            renderMessage('bot', '⚠️ Verbindungsfehler: Bitte Internetverbindung prüfen.');
             console.error(err);
         }
     }
 
     function startGimiVoice() {
         const mic = document.getElementById('gimi-mic');
-        if (!('webkitSpeechRecognition' in window)) {
-            alert("Spracherkennung wird von diesem Browser nicht unterstützt.");
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+            alert("Spracherkennung wird von diesem Browser leider nicht unterstützt. Bitte nutze Google Chrome oder Microsoft Edge.");
             return;
         }
-        const recognition = new webkitSpeechRecognition();
-        recognition.lang = 'de-DE';
-        recognition.onstart = () => { mic.classList.add('active'); };
-        recognition.onresult = (event) => {
-            const text = event.results[0][0].transcript;
-            handleGimiInput(text);
+
+        const recognition = new SpeechRec();
+        recognition.lang = 'de-CH';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            if (mic) mic.classList.add('active');
         };
-        recognition.onend = () => { mic.classList.add('active'); mic.classList.remove('active'); };
-        recognition.start();
+
+        recognition.onresult = (event) => {
+            if (event.results && event.results[0] && event.results[0][0]) {
+                const text = event.results[0][0].transcript;
+                if (text && text.trim() !== '') {
+                    handleGimiInput(text.trim());
+                }
+            }
+        };
+
+        recognition.onerror = (e) => {
+            console.warn('Speech recognition error:', e);
+            if (mic) mic.classList.remove('active');
+        };
+
+        recognition.onend = () => {
+            if (mic) mic.classList.remove('active');
+        };
+
+        try {
+            recognition.start();
+        } catch (e) {
+            if (mic) mic.classList.remove('active');
+        }
     }
 
     const gsBtn = document.getElementById('gimi-send');
