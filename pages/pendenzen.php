@@ -4311,57 +4311,41 @@ if ($res) {
         <!-- Modal Body -->
         <div style="padding:20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;">
             
-            <!-- Mic Pulsing Circle -->
-            <div style="text-align:center; padding:8px 0 4px;">
-                <div id="voiceMicCircle" style="width:76px; height:76px; border-radius:50%; background:#e0e7ff; color:#4f46e5; display:inline-flex; align-items:center; justify-content:center; font-size:34px; cursor:pointer; transition:all 0.3s ease; box-shadow:0 0 0 0 rgba(79,70,229,0.4);">
-                    🎙️
+            <!-- 1-Klick Smartphone Tastatur-Diktat Banner -->
+            <div style="background:linear-gradient(135deg, #eff6ff, #dbeafe); border:1.5px solid #bfdbfe; border-radius:14px; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                <div>
+                    <div style="font-weight:800; font-size:14px; color:#1e40af; display:flex; align-items:center; gap:6px;">
+                        <span>📲</span> Tastatur-Diktat (Empfohlen)
+                    </div>
+                    <div style="font-size:12px; color:#3b82f6; margin-top:2px;">
+                        Tippen Sie ins Feld & drücken Sie die <strong>🎙️-Taste der Tastatur</strong>.
+                    </div>
                 </div>
-                <div id="voiceStatusText" style="margin-top:12px; font-size:14px; font-weight:700; color:#1e293b;">
-                    Klicken Sie auf das Mikrofon und sprechen Sie los...
-                </div>
-                <div style="font-size:12px; color:#64748b; margin-top:3px;">
-                    Z.B.: <em>«Romanshorn Wohnung 2 im Bad Wasserhahn tropft dringend bis Freitag»</em>
-                </div>
+                <button type="button" onclick="document.getElementById('voiceTranscriptInput').focus()" style="background:#2563eb; color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
+                    ⌨️ Diktat starten
+                </button>
             </div>
 
-            <!-- Mikrofon-Berechtigung & Browser-Hilfe Box -->
-            <div id="voicePermissionHelp" style="display:none; padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; font-size:13px; color:#991b1b;">
-                <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:14px; margin-bottom:8px;">
-                    <span>🔒</span> Mikrofon-Berechtigung erforderlich
+            <!-- Mic Pulsing Circle -->
+            <div style="text-align:center; padding:4px 0;">
+                <div id="voiceMicCircle" style="width:70px; height:70px; border-radius:50%; background:#e0e7ff; color:#4f46e5; display:inline-flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; transition:all 0.3s ease; box-shadow:0 0 0 0 rgba(79,70,229,0.4);">
+                    🎙️
                 </div>
-                <p style="margin:0 0 10px; line-height:1.45;">
-                    Ihr Browser (Safari / Chrome) hat den Mikrofonzugriff derzeit blockiert oder noch nicht angefragt.
-                </p>
-                <div style="text-align:center; margin-bottom:10px;">
-                    <button type="button" id="btnPromptVoicePerm" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(220,38,38,0.3);">
-                        🎙️ Berechtigungsabfrage im Browser anfordern
-                    </button>
+                <div id="voiceStatusText" style="margin-top:10px; font-size:13px; font-weight:700; color:#1e293b;">
+                    Oder klicken Sie auf das Mikrofon, um direkt aufzunehmen
                 </div>
-                <details style="background:#fff; border:1px solid #fca5a5; border-radius:8px; padding:8px 12px; cursor:pointer; margin-top:6px;">
-                    <summary style="font-weight:700; color:#b91c1c;">📱 Anleitung: So erlauben Sie das Mikrofon</summary>
-                    <div style="margin-top:8px; line-height:1.5; font-size:12px; color:#475569;">
-                        <strong>🍏 Safari (iPhone / iPad):</strong>
-                        <ol style="margin:4px 0 8px; padding-left:18px;">
-                            <li>Tippen Sie links in der Adresszeile auf <strong>«aA»</strong> oder das <strong>Schloss 🔒</strong>.</li>
-                            <li>Wählen Sie <strong>«Website-Einstellungen»</strong>.</li>
-                            <li>Stellen Sie <strong>«Mikrofon»</strong> auf <strong>«Erlauben»</strong>.</li>
-                        </ol>
-                        <strong>🌐 Google Chrome (Android / PC / iOS):</strong>
-                        <ol style="margin:4px 0 0; padding-left:18px;">
-                            <li>Tippen Sie links neben der Webadresse auf das <strong>Schloss / Regler-Icon 🔒</strong>.</li>
-                            <li>Wählen Sie <strong>«Berechtigungen»</strong> &rarr; <strong>«Mikrofon»</strong> auf <strong>«Zulassen»</strong>.</li>
-                        </ol>
-                    </div>
-                </details>
+                <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                    Z.B.: <em>«Romanshorn Wohnung 2 im Bad Wasserhahn tropft dringend bis Freitag»</em>
+                </div>
             </div>
 
             <!-- Transcript Textarea -->
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <label style="font-size:12px; font-weight:700; color:#475569;">Gesprochener Text:</label>
+                    <label style="font-size:12px; font-weight:700; color:#475569;">Eingesprochener Text:</label>
                     <button type="button" id="btnClearVoiceText" style="background:none; border:none; color:#64748b; font-size:11px; cursor:pointer; text-decoration:underline;">Leeren</button>
                 </div>
-                <textarea id="voiceTranscriptInput" rows="3" placeholder="Ihr gesprochener Text erscheint hier in Echtzeit... Sie können ihn auch direkt manuell bearbeiten." style="width:100%; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical; box-sizing:border-box; outline:none; transition:border-color 0.2s;"></textarea>
+                <textarea id="voiceTranscriptInput" rows="3" placeholder="Hier sprechen oder per Tastatur-Mikrofon einsprechen..." style="width:100%; border:1.5px solid #cbd5e1; border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical; box-sizing:border-box; outline:none; transition:border-color 0.2s;"></textarea>
             </div>
 
             <!-- AI Extraction Badges -->

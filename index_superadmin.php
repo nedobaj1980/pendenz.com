@@ -1063,59 +1063,45 @@ include __DIR__ . "/includes/nav_superadmin.php";
       Sprich einfach frei: z.B. <em>"Romanshorn Arbonerstrasse Wohnung 3 Wasserhahn tropft dringend bis Freitag"</em>
     </p>
 
-    <div style="text-align:center; padding: 10px 0;">
+    <!-- 1-Klick Smartphone Tastatur-Diktat Banner -->
+    <div style="background:linear-gradient(135deg, #eff6ff, #dbeafe); border:1.5px solid #bfdbfe; border-radius:14px; padding:14px 16px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div>
+        <div style="font-weight:800; font-size:0.95rem; color:#1e40af; display:flex; align-items:center; gap:6px;">
+          <span>📲</span> Tastatur-Diktat (Empfohlen)
+        </div>
+        <div style="font-size:0.8rem; color:#3b82f6; margin-top:3px; line-height:1.35;">
+          Tippe ins Feld & drücke die <strong>🎙️-Taste deiner Tastatur</strong>. Funktioniert immer zu 100%!
+        </div>
+      </div>
+      <button type="button" onclick="focusVoiceTextarea()" style="background:#2563eb; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-size:0.85rem; font-weight:700; cursor:pointer; white-space:nowrap; box-shadow:0 3px 10px rgba(37,99,235,0.25);">
+        ⌨️ Diktat starten
+      </button>
+    </div>
+
+    <!-- Web-Mikrofon Button -->
+    <div style="text-align:center; padding: 6px 0 10px;">
       <button type="button" id="voiceMicBtn" class="voice-pulse-btn" onclick="toggleVoiceRecording()" title="Tippe zum Sprechen">
         🎙️
       </button>
       <div id="voiceStatusText" style="font-size:0.85rem; font-weight:700; color:#3b82f6; min-height:22px; margin-top:8px;">
-        👆 Tippe auf das Mikrofon, um die Aufnahme zu starten
+        👆 Oder tippe auf das Mikrofon, um direkt aufzunehmen
       </div>
     </div>
 
-    <!-- Mikrofon-Berechtigung & Browser-Hilfe Box -->
-    <div id="voicePermissionHelp" style="display:none; margin-top:12px; padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; font-size:0.85rem; color:#991b1b;">
-      <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:0.92rem; margin-bottom:8px;">
-        <span>🔒</span> Mikrofon-Berechtigung erforderlich
+    <!-- Textfeld mit Live-Analyse -->
+    <div style="margin-top:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <label for="voiceTranscriptInput" style="font-size:0.8rem; font-weight:700; color:#475569;">Eingesprochener Text:</label>
+        <button type="button" onclick="clearVoiceText()" style="background:none; border:none; color:#64748b; font-size:0.75rem; cursor:pointer; text-decoration:underline;">Leeren</button>
       </div>
-      <p style="margin:0 0 10px; line-height:1.45;">
-        Dein Browser (Safari / Chrome) hat den Mikrofonzugriff derzeit gesperrt oder noch nicht abgefragt.
-      </p>
-      
-      <div style="text-align:center; margin-bottom:12px;">
-        <button type="button" onclick="promptMicrophonePermission()" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(220,38,38,0.3);">
-          🎙️ Berechtigungsabfrage anfordern
-        </button>
-      </div>
-
-      <details style="background:#fff; border:1px solid #fca5a5; border-radius:8px; padding:8px 12px; cursor:pointer; margin-top:6px;">
-        <summary style="font-weight:700; color:#b91c1c;">📱 Anleitung: So aktivierst du das Mikrofon</summary>
-        <div style="margin-top:8px; line-height:1.5; font-size:0.8rem; color:#475569;">
-          <strong>🍏 Safari (iPhone / iPad):</strong>
-          <ol style="margin:4px 0 8px; padding-left:18px;">
-            <li>Tippe in der Adressleiste links auf <strong>«aA»</strong> oder das <strong>Schloss 🔒</strong>.</li>
-            <li>Wähle <strong>«Website-Einstellungen»</strong>.</li>
-            <li>Stelle <strong>«Mikrofon»</strong> auf <strong>«Erlauben»</strong>.</li>
-          </ol>
-          <strong>🌐 Google Chrome (Android / PC / iOS):</strong>
-          <ol style="margin:4px 0 0; padding-left:18px;">
-            <li>Tippe links neben der Adresse auf das <strong>Schloss / Regler-Icon 🔒</strong>.</li>
-            <li>Wähle <strong>«Berechtigungen»</strong> &rarr; <strong>«Mikrofon»</strong> auf <strong>«Zulassen»</strong>.</li>
-          </ol>
-        </div>
-      </details>
-    </div>
-
-    <div style="margin-top:14px;">
-      <label for="voiceTranscriptInput" style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:6px;">Erkannter Text oder manuelle Eingabe:</label>
-      <textarea id="voiceTranscriptInput" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;" placeholder="Hier sprechen oder Text eintippen..."></textarea>
-      <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">
-        💡 <strong>Tipp für Smartphone:</strong> Du kannst auch ins Textfeld tippen und die <strong>Mikrofon-Taste der Tastatur</strong> nutzen.
-      </div>
+      <textarea id="voiceTranscriptInput" rows="3" oninput="onVoiceInputChanged(this.value)" style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:12px; font-size:1rem; font-family:inherit; box-sizing:border-box; outline:none; transition:border-color 0.2s;" placeholder="Hier tippen oder per Tastatur-Mikrofon einsprechen..."></textarea>
     </div>
 
     <!-- Live Preview Badges -->
-    <div id="voiceMatchPreview" style="margin-top:14px; padding:12px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:none;">
-      <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">Automatische Zuweisung:</div>
+    <div id="voiceMatchPreview" style="margin-top:14px; padding:12px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0; display:none;">
+      <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+        <span>✨</span> Automatische Zuweisung durch Gimi:
+      </div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:0.8rem;">
         <span id="vBadgeProj" class="sdash-port-chip sdash-port-chip--primary">Liegenschaft: —</span>
         <span id="vBadgeUnit" class="sdash-port-chip">Wohnung: —</span>
@@ -1146,6 +1132,8 @@ let voiceMediaStream = null;
 let voiceIsListening = false;
 let lastParsedVoice = null;
 
+let voiceInputDebounceTimer = null;
+
 function openVoiceModal() {
   const modal = document.getElementById('gimiVoiceModal');
   if (modal) modal.style.display = 'flex';
@@ -1156,6 +1144,49 @@ function openVoiceModal() {
   }
   const permHelp = document.getElementById('voicePermissionHelp');
   if (permHelp) permHelp.style.display = 'none';
+  // Fokus auf Textarea für schnelles Smartphone-Diktat
+  setTimeout(() => {
+    const input = document.getElementById('voiceTranscriptInput');
+    if (input && window.innerWidth <= 768) {
+      input.focus();
+    }
+  }, 300);
+}
+
+function focusVoiceTextarea() {
+  const input = document.getElementById('voiceTranscriptInput');
+  if (input) {
+    input.focus();
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function clearVoiceText() {
+  const input = document.getElementById('voiceTranscriptInput');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  const preview = document.getElementById('voiceMatchPreview');
+  if (preview) preview.style.display = 'none';
+  const saveBtn = document.getElementById('btnSaveVoicePendenz');
+  if (saveBtn) saveBtn.disabled = true;
+  lastParsedVoice = null;
+}
+
+function onVoiceInputChanged(val) {
+  clearTimeout(voiceInputDebounceTimer);
+  const text = (val || '').trim();
+  if (text.length < 3) {
+    const preview = document.getElementById('voiceMatchPreview');
+    if (preview) preview.style.display = 'none';
+    const saveBtn = document.getElementById('btnSaveVoicePendenz');
+    if (saveBtn) saveBtn.disabled = true;
+    return;
+  }
+  voiceInputDebounceTimer = setTimeout(() => {
+    parseVoiceInput(text);
+  }, 500);
 }
 
 function closeVoiceModal() {
