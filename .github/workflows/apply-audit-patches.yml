@@ -6,6 +6,7 @@ on:
       - chatgpt/full-audit-2026-09-15
     paths:
       - tools/audit_patch_pendenzen.py
+      - tools/fix_audit_patcher.py
       - .github/workflows/apply-audit-patches.yml
 
 permissions:
@@ -20,6 +21,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: chatgpt/full-audit-2026-09-15
+
+      - name: Repair patch matcher
+        run: python3 tools/fix_audit_patcher.py
 
       - name: Apply audited patch
         run: python3 tools/audit_patch_pendenzen.py
