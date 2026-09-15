@@ -32,6 +32,8 @@ function mustContain(string $file, string $needle, string $message): void
 
 $voiceApi = $root . '/api/voice_pendenz_impl.php';
 $bootstrap = $root . '/api/_bootstrap.php';
+$aiQuery = $root . '/api/ai_query.php';
+$folderTemplates = $root . '/pages/ordner_vorlagen.php';
 
 mustNotContain(
     $voiceApi,
@@ -61,6 +63,36 @@ mustContain(
     $bootstrap,
     "'error' => 'INTERNAL_ERROR'",
     'API-Exceptions dürfen keine internen Fehlermeldungen direkt ausgeben.'
+);
+
+mustContain(
+    $aiQuery,
+    'require_project_access_json',
+    'Gimi Chat-Aktionen müssen Projektzugriff serverseitig prüfen.'
+);
+
+mustNotContain(
+    $aiQuery,
+    "current_project_id'] ?? 1",
+    'Gimi Chat darf nicht still auf Projekt 1 zurückfallen.'
+);
+
+mustContain(
+    $aiQuery,
+    "$status = 'offen';",
+    'Gimi Chat muss den Status vor dem Pendenz-INSERT explizit setzen.'
+);
+
+mustContain(
+    $folderTemplates,
+    "includes/csrf.php",
+    'Ordner-Muster benötigen CSRF-Schutz.'
+);
+
+mustContain(
+    $folderTemplates,
+    'csrf_validate',
+    'Ordner-Muster müssen POST-Aktionen mit CSRF prüfen.'
 );
 
 if ($failures !== []) {
