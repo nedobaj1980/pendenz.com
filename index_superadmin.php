@@ -1072,6 +1072,39 @@ include __DIR__ . "/includes/nav_superadmin.php";
       </div>
     </div>
 
+    <!-- Mikrofon-Berechtigung & Browser-Hilfe Box -->
+    <div id="voicePermissionHelp" style="display:none; margin-top:12px; padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; font-size:0.85rem; color:#991b1b;">
+      <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:0.92rem; margin-bottom:8px;">
+        <span>🔒</span> Mikrofon-Berechtigung erforderlich
+      </div>
+      <p style="margin:0 0 10px; line-height:1.45;">
+        Dein Browser (Safari / Chrome) hat den Mikrofonzugriff derzeit gesperrt oder noch nicht abgefragt.
+      </p>
+      
+      <div style="text-align:center; margin-bottom:12px;">
+        <button type="button" onclick="promptMicrophonePermission()" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(220,38,38,0.3);">
+          🎙️ Berechtigungsabfrage anfordern
+        </button>
+      </div>
+
+      <details style="background:#fff; border:1px solid #fca5a5; border-radius:8px; padding:8px 12px; cursor:pointer; margin-top:6px;">
+        <summary style="font-weight:700; color:#b91c1c;">📱 Anleitung: So aktivierst du das Mikrofon</summary>
+        <div style="margin-top:8px; line-height:1.5; font-size:0.8rem; color:#475569;">
+          <strong>🍏 Safari (iPhone / iPad):</strong>
+          <ol style="margin:4px 0 8px; padding-left:18px;">
+            <li>Tippe in der Adressleiste links auf <strong>«aA»</strong> oder das <strong>Schloss 🔒</strong>.</li>
+            <li>Wähle <strong>«Website-Einstellungen»</strong>.</li>
+            <li>Stelle <strong>«Mikrofon»</strong> auf <strong>«Erlauben»</strong>.</li>
+          </ol>
+          <strong>🌐 Google Chrome (Android / PC / iOS):</strong>
+          <ol style="margin:4px 0 0; padding-left:18px;">
+            <li>Tippe links neben der Adresse auf das <strong>Schloss / Regler-Icon 🔒</strong>.</li>
+            <li>Wähle <strong>«Berechtigungen»</strong> &rarr; <strong>«Mikrofon»</strong> auf <strong>«Zulassen»</strong>.</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+
     <div style="margin-top:14px;">
       <label for="voiceTranscriptInput" style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:6px;">Erkannter Text oder manuelle Eingabe:</label>
       <textarea id="voiceTranscriptInput" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;" placeholder="Hier sprechen oder Text eintippen..."></textarea>
@@ -1117,6 +1150,8 @@ function openVoiceModal() {
     status.style.color = '#3b82f6';
     status.textContent = '👆 Tippe auf das Mikrofon, um die Aufnahme zu starten';
   }
+  const permHelp = document.getElementById('voicePermissionHelp');
+  if (permHelp) permHelp.style.display = 'none';
 }
 
 function closeVoiceModal() {
@@ -1125,29 +1160,88 @@ function closeVoiceModal() {
   if (modal) modal.style.display = 'none';
 }
 
-function startVoiceRecording() {
+// Explizite Anforderung der Mikrofonberechtigung für Safari / Chrome
+async function promptMicrophonePermission() {
+  const status = document.getElementById('voiceStatusText');
+  const permHelp = document.getElementById('voicePermissionHelp');
+  
+  if (status) {
+    status.style.color = '#3b82f6';
+    status.textContent = '⏳ Frage Browser nach Mikrofon-Freigabe...';
+  }
+
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Sobald erlaubt, Tracks stoppen & direkt Aufnahme starten
+      stream.getTracks().forEach(track => track.stop());
+      if (permHelp) permHelp.style.display = 'none';
+      if (status) {
+        status.style.color = '#10b981';
+        status.textContent = '✅ Mikrofon freigegeben! Starte Aufnahme...';
+      }
+      setTimeout(() => {
+        startVoiceRecording();
+      }, 300);
+      return;
+    } catch (err) {
+      console.warn('getUserMedia error:', err);
+      if (permHelp) permHelp.style.display = 'block';
+      if (status) {
+        status.style.color = '#dc2626';
+        status.innerHTML = '⚠️ Mikrofonzugriff verweigert. Bitte in den Browser-Einstellungen erlauben (siehe unten).';
+      }
+      return;
+    }
+  }
+
+  // Fallback wenn kein getUserMedia
+  startVoiceRecording();
+}
+
+async function startVoiceRecording() {
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   const status = document.getElementById('voiceStatusText');
   const btn = document.getElementById('voiceMicBtn');
   const input = document.getElementById('voiceTranscriptInput');
+  const permHelp = document.getElementById('voicePermissionHelp');
 
   if (!SpeechRec) {
     if (status) {
       status.style.color = '#d97706';
       status.textContent = 'ℹ️ Direkte Spracherkennung nicht im Browser verfügbar. Bitte Textfeld oder Handy-Tastatur-Mikrofon nutzen.';
     }
+    if (permHelp) permHelp.style.display = 'block';
     return;
+  }
+
+  // Wenn getUserMedia vorhanden ist und wir noch nicht freigegeben haben, kurz prüfen
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !voiceIsListening) {
+    try {
+      // Teste oder trigger Berechtigung
+      const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      testStream.getTracks().forEach(track => track.stop());
+      if (permHelp) permHelp.style.display = 'none';
+    } catch (e) {
+      console.warn('Mic access check:', e);
+      if (permHelp) permHelp.style.display = 'block';
+      if (status) {
+        status.style.color = '#dc2626';
+        status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte unten auf Freigabe tippen.';
+      }
+      return;
+    }
   }
 
   try {
     voiceRecognition = new SpeechRec();
-    // de-DE ist universell auf allen mobilen iOS/Android und Desktop Browsern verfügbar
     voiceRecognition.lang = 'de-DE';
     voiceRecognition.interimResults = true;
     voiceRecognition.continuous = false;
 
     voiceRecognition.onstart = () => {
       voiceIsListening = true;
+      if (permHelp) permHelp.style.display = 'none';
       if (btn) btn.classList.add('listening');
       if (status) {
         status.style.color = '#ef4444';
@@ -1169,17 +1263,24 @@ function startVoiceRecording() {
 
     voiceRecognition.onerror = (err) => {
       console.warn('SpeechRecognition error:', err);
-      if (status) {
-        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+      if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+        if (permHelp) permHelp.style.display = 'block';
+        if (status) {
           status.style.color = '#dc2626';
           status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
-        } else if (err.error === 'no-speech') {
+        }
+      } else if (err.error === 'no-speech') {
+        if (status) {
           status.style.color = '#64748b';
           status.innerHTML = 'ℹ️ Keine Sprache gehört. Tippe erneut auf das Mikrofon und sprich laut.';
-        } else if (err.error === 'aborted') {
+        }
+      } else if (err.error === 'aborted') {
+        if (status) {
           status.style.color = '#64748b';
           status.innerHTML = 'Aufnahme beendet.';
-        } else {
+        }
+      } else {
+        if (status) {
           status.style.color = '#dc2626';
           status.innerHTML = '⚠️ Spracherkennung gestoppt. Du kannst den Text auch manuell eintippen.';
         }
@@ -1197,9 +1298,10 @@ function startVoiceRecording() {
     voiceRecognition.start();
   } catch(e) {
     console.warn('Voice start exception:', e);
+    if (permHelp) permHelp.style.display = 'block';
     if (status) {
-      status.style.color = '#64748b';
-      status.textContent = 'Tippe auf das Mikrofon, um erneut zu starten.';
+      status.style.color = '#dc2626';
+      status.textContent = 'Mikrofonzugriff erforderlich.';
     }
     stopVoiceRecording();
   }
