@@ -30,24 +30,37 @@ function mustContain(string $file, string $needle, string $message): void
     }
 }
 
-$voiceApi = $root . '/api/voice_pendenz.php';
+$voiceApi = $root . '/api/voice_pendenz_impl.php';
+$bootstrap = $root . '/api/_bootstrap.php';
 
 mustNotContain(
     $voiceApi,
     'CURLOPT_SSL_VERIFYPEER, false',
-    'voice_pendenz.php darf die TLS-Zertifikatsprüfung nicht deaktivieren.'
+    'Gimi Voice darf die TLS-Zertifikatsprüfung nicht deaktivieren.'
 );
 
 mustNotContain(
     $voiceApi,
     'SELECT id FROM benutzer ORDER BY id ASC LIMIT 1',
-    'voice_pendenz.php darf bei ungültiger Session nicht auf den ersten Benutzer ausweichen.'
+    'Gimi Voice darf bei ungültiger Session nicht auf den ersten Benutzer ausweichen.'
 );
 
 mustContain(
     $voiceApi,
-    'require_project_access',
+    'require_project_access_json',
     'Voice-Speichern muss vor dem INSERT die Projektberechtigung prüfen.'
+);
+
+mustContain(
+    $voiceApi,
+    'external_can_view, external_can_upload',
+    'Voice-Speichern muss die Public-Freigaben explizit behandeln.'
+);
+
+mustContain(
+    $bootstrap,
+    "'error' => 'INTERNAL_ERROR'",
+    'API-Exceptions dürfen keine internen Fehlermeldungen direkt ausgeben.'
 );
 
 if ($failures !== []) {
