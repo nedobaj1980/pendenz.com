@@ -1,4 +1,4 @@
-# C:\xampp\htdocs\pendenz.com\.htaccess
+# pendenz.com Apache-Konfiguration
 Options -Indexes
 
 # Global PHP Session Configuration
@@ -17,17 +17,39 @@ Options -Indexes
   php_value session.cookie_path /
 </IfModule>
 
+# Interne Projekt-/Entwicklungsdateien nie direkt über HTTP ausliefern.
+<FilesMatch "(?i)^(?:\.env(?:\..*)?|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml(?:\.dist)?|.*\.(?:md|log|sql|sqlite|bak|old|orig|dist|ini|yml|yaml))$">
+  Require all denied
+</FilesMatch>
+
+# Bekannte Wartungs-/Debug-Skripte im Webroot sperren. Produktive Wartung erfolgt
+# über authentifizierte Admin-Seiten bzw. CLI, nicht über frei aufrufbare Tools.
+<FilesMatch "(?i)^(?:phpinfo|rename_(?:col|table)|repair_paths|run_reset|scan_drive|debug_.*|check_.*|test_.*)\.php$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /pendenz.com/
 
-  # Statische Dateien/Ordner direkt ausliefern
+  # Entwicklungs-, Backup- und interne Arbeitsverzeichnisse blockieren.
+  RewriteRule ^(?:\.agents|\.github|scratch|Absicherung%20vor%20l%C3%B6schen|Absicherung[[:space:]]vor[[:space:]]l%C3%B6schen|Array|Konzept)(?:/|$) - [F,L,NC]
+
+  # Versteckte Dateien (ausser ACME-Challenges) sperren.
+  RewriteRule "(^|/)\.(?!well-known(?:/|$))" - [F,L]
+
+  # Statische Dateien/Ordner direkt ausliefern.
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # (Optional) Frontcontroller
+  # Optionaler Frontcontroller bleibt bewusst deaktiviert.
   # RewriteRule ^ index.php [L]
 </IfModule>
 
