@@ -6179,28 +6179,13 @@ if ($res) {
             };
         }
 
-        const startVoiceRecording = async () => {
+        const startVoiceRecording = () => {
             if (!recognition) {
                 if (voiceStatusText) {
                     voiceStatusText.innerHTML = '⚠️ Spracherkennung im Browser nicht nativ aktiv. Bitte Text manuell eingeben.';
                 }
                 if (voicePermissionHelp) voicePermissionHelp.style.display = 'block';
                 return;
-            }
-
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !isRecording) {
-                try {
-                    const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    testStream.getTracks().forEach(track => track.stop());
-                    if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
-                } catch (e) {
-                    console.warn('Mic access check:', e);
-                    if (voicePermissionHelp) voicePermissionHelp.style.display = 'block';
-                    if (voiceStatusText) {
-                        voiceStatusText.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte unten Berechtigung anfordern.';
-                    }
-                    return;
-                }
             }
 
             try {

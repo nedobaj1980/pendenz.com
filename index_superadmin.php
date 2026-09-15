@@ -1199,7 +1199,7 @@ async function promptMicrophonePermission() {
   startVoiceRecording();
 }
 
-async function startVoiceRecording() {
+function startVoiceRecording() {
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   const status = document.getElementById('voiceStatusText');
   const btn = document.getElementById('voiceMicBtn');
@@ -1215,29 +1215,17 @@ async function startVoiceRecording() {
     return;
   }
 
-  // Wenn getUserMedia vorhanden ist und wir noch nicht freigegeben haben, kurz prüfen
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !voiceIsListening) {
-    try {
-      // Teste oder trigger Berechtigung
-      const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      testStream.getTracks().forEach(track => track.stop());
-      if (permHelp) permHelp.style.display = 'none';
-    } catch (e) {
-      console.warn('Mic access check:', e);
-      if (permHelp) permHelp.style.display = 'block';
-      if (status) {
-        status.style.color = '#dc2626';
-        status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte unten auf Freigabe tippen.';
-      }
-      return;
-    }
+  // Bereits laufende Erkennung stoppen
+  if (voiceRecognition) {
+    try { voiceRecognition.abort(); } catch(e) {}
+    voiceRecognition = null;
   }
 
   try {
     voiceRecognition = new SpeechRec();
     voiceRecognition.lang = 'de-DE';
     voiceRecognition.interimResults = true;
-    voiceRecognition.continuous = false;
+    voiceRecognition.continuous = false; // Wichtig für iOS Safari
 
     voiceRecognition.onstart = () => {
       voiceIsListening = true;
@@ -1267,7 +1255,7 @@ async function startVoiceRecording() {
         if (permHelp) permHelp.style.display = 'block';
         if (status) {
           status.style.color = '#dc2626';
-          status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
+          status.innerHTML = '⚠️ Mikrofon-Zugriff noch nicht aktiv. Tippe auf <strong>«Berechtigungsabfrage anfordern»</strong> oder nutze die Tastatur-Diktierfunktion.';
         }
       } else if (err.error === 'no-speech') {
         if (status) {
@@ -1275,7 +1263,7 @@ async function startVoiceRecording() {
           status.innerHTML = 'ℹ️ Keine Sprache gehört. Tippe erneut auf das Mikrofon und sprich laut.';
         }
       } else if (err.error === 'aborted') {
-        if (status) {
+        if (status && status.textContent.includes('höre zu')) {
           status.style.color = '#64748b';
           status.innerHTML = 'Aufnahme beendet.';
         }
@@ -1295,13 +1283,14 @@ async function startVoiceRecording() {
       }
     };
 
+    // SYNCHRONER START innerhalb des Klick-Events für iOS Safari / Chrome
     voiceRecognition.start();
   } catch(e) {
     console.warn('Voice start exception:', e);
     if (permHelp) permHelp.style.display = 'block';
     if (status) {
       status.style.color = '#dc2626';
-      status.textContent = 'Mikrofonzugriff erforderlich.';
+      status.textContent = 'Mikrofonzugriff erforderlich oder nicht bereit.';
     }
     stopVoiceRecording();
   }
