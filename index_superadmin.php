@@ -202,6 +202,15 @@ include __DIR__ . "/includes/nav_superadmin.php";
     gap: 12px;
     margin-top: 24px;
   }
+  .sdash-hero__cta .sdash-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
   .sdash-hero__btn-voice {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
     color: #fff;
@@ -530,38 +539,61 @@ include __DIR__ . "/includes/nav_superadmin.php";
       padding-bottom: 80px !important;
     }
     .sdash-hero {
-      padding: 24px 14px !important;
-      margin-bottom: 18px !important;
+      padding: 20px 14px 16px !important;
+      margin-bottom: 14px !important;
     }
     .sdash-hero__text h1 {
-      font-size: 1.65rem !important;
+      font-size: 1.45rem !important;
       line-height: 1.2 !important;
+      margin-bottom: 6px !important;
     }
     .sdash-hero__text p {
-      font-size: 0.95rem !important;
-      margin-bottom: 16px !important;
+      font-size: 0.85rem !important;
+      margin-bottom: 12px !important;
+      line-height: 1.4 !important;
     }
     .sdash-hero__badge {
-      font-size: 0.72rem !important;
-      padding: 4px 10px !important;
+      font-size: 0.68rem !important;
+      padding: 3px 8px !important;
+      margin-bottom: 8px !important;
     }
+    /* CTA Buttons: 2-Spalten-Grid statt Spalte */
     .sdash-hero__cta {
-      flex-direction: column !important;
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
       width: 100% !important;
       gap: 8px !important;
+      margin-top: 12px !important;
     }
     .sdash-hero__cta button,
     .sdash-hero__cta a {
       width: 100% !important;
       text-align: center !important;
       justify-content: center !important;
-      padding: 12px 16px !important;
+      padding: 10px 12px !important;
+      font-size: 0.82rem !important;
+      border-radius: 10px !important;
+      box-sizing: border-box !important;
+    }
+    /* Voice-Button über volle Breite */
+    .sdash-hero__cta .sdash-hero__btn-voice {
+      grid-column: 1 / -1 !important;
+    }
+    .sdash-hero__cta .sdash-icon {
+      width: 14px !important;
+      height: 14px !important;
     }
     .sdash-kpi-grid {
-      grid-template-columns: 1fr !important;
+      grid-template-columns: 1fr 1fr !important;
       padding: 0 12px !important;
       gap: 10px !important;
       margin-top: -12px !important;
+    }
+    .sdash-kpi-card__val {
+      font-size: 1.4rem !important;
+    }
+    .sdash-kpi-card {
+      padding: 14px !important;
     }
     .sdash-hub-section {
       padding: 0 12px !important;
@@ -626,8 +658,7 @@ include __DIR__ . "/includes/nav_superadmin.php";
           🎙️ Gimi Voice (Sprechen)
         </button>
         <a class="sdash-btn" href="<?= safe(page_url('pendenz_neu.php')) ?>">
-          <svg class="sdash-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-          Neue Pendenz
+          ➕ Neue Pendenz
         </a>
         <a class="sdash-btn sdash-btn--ghost" href="<?= safe(page_url('mieterspiegel.php')) ?>">
           📈 Mieterspiegel
