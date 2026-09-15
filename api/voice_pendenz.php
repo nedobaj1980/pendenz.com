@@ -1,114 +1,238 @@
 <?php
 // api/voice_pendenz.php
-// Intelligente Voice-Erfassung für Pendenzen (Gimi Voice Assistant)
+// Intelligente, abgesicherte Voice-Erfassung für Pendenzen (Gimi Voice Assistant)
 declare(strict_types=1);
 
 require_once __DIR__ . '/_bootstrap.php';
 
-api_try(function() {
-    $db = db();
-    
-    // Auth-Check
-    if (!is_logged_in()) {
-        json_response(['ok' => false, 'error' => 'UNAUTHORIZED', 'message' => 'Bitte einloggen.'], 401);
+/**
+ * @return array{projekte:array,objekte:array,wohnungen:array,raeume:array,arten:array,benutzer:array}
+ */
+function voice_context(mysqli $db, int $userId): array
+{
+    if (is_admin()) {
+        $projekte = $db->query(
+            "SELECT id, name FROM projekte WHERE deleted_at IS NULL ORDER BY name ASC"
+        )->fetch_all(MYSQLI_ASSOC);
+    } else {
+        $stmt = $db->prepare(
+            "SELECT DISTINCT p.id, p.name
+             FROM projekte p
+             INNER JOIN projekt_mitglieder pm ON pm.projekt_id = p.id
+             WHERE pm.benutzer_id = ? AND p.deleted_at IS NULL
+             ORDER BY p.name ASC"
+        );
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $projekte = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
     }
-    
-    $userId = (int)($_SESSION['user_id'] ?? 0);
-    $uCheck = $db->query("SELECT id FROM benutzer WHERE id = $userId LIMIT 1")->fetch_assoc();
-    if (!$uCheck) {
-        $uRow = $db->query("SELECT id FROM benutzer ORDER BY id ASC LIMIT 1")->fetch_assoc();
-        $userId = $uRow ? (int)$uRow['id'] : null;
-    }
-    
-    // Input lesen (JSON oder POST)
-    $rawInput = file_get_contents('php://input');
-    $data = json_decode($rawInput, true) ?: $_POST;
-    
-    $action = $data['action'] ?? $_GET['action'] ?? 'parse';
-    $text   = trim((string)($data['text'] ?? ''));
-    $audioBase64 = (string)($data['audio_base64'] ?? '');
-    $audioMime   = (string)($data['audio_mime'] ?? 'audio/webm');
-    
-    // Falls Audio übergeben wurde, aber kein Text vorhanden ist: Transkribiere per Gemini Flash
-    if ($text === '' && !empty($audioBase64)) {
-        $apiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : '';
-        if (!empty($apiKey)) {
-            // Bereinige MIME und Base64-Präfix falls vorhanden
-            if (preg_match('/^data:([^;]+);base64,(.*)$/', $audioBase64, $m)) {
-                $audioMime = $m[1];
-                $audioBase64 = $m[2];
-            }
-            // iOS Safari liefert oft audio/mp4 oder audio/wav oder audio/aac
-            if (str_contains($audioMime, 'mp4') || str_contains($audioMime, 'm4a') || str_contains($audioMime, 'aac')) {
-                $audioMime = 'audio/mp4';
-            } elseif (str_contains($audioMime, 'wav')) {
-                $audioMime = 'audio/wav';
-            } elseif (str_contains($audioMime, 'ogg')) {
-                $audioMime = 'audio/ogg';
-            } else {
-                $audioMime = 'audio/webm';
-            }
 
-            $models = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
-            foreach ($models as $mName) {
-                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$mName}:generateContent?key=" . $apiKey;
-                $payload = [
-                    "contents" => [[
-                        "parts" => [
-                            [
-                                "inlineData" => [
-                                    "mimeType" => $audioMime,
-                                    "data" => $audioBase64
-                                ]
-                            ],
-                            [
-                                "text" => "Transkribiere diese Audionachricht für die Liegenschaftsverwaltung wortgetreu auf Deutsch. Gib NUR den transkribierten Text zurück, ohne Anführungszeichen oder Erklärungen."
-                            ]
+    $projectIds = array_values(array_filter(array_map(
+        static fn(array $row): int => (int) ($row['id'] ?? 0),
+        $projekte
+    )));
+
+    if ($projectIds === []) {
+        return [
+            'projekte' => [],
+            'objekte' => [],
+            'wohnungen' => [],
+            'raeume' => [],
+            'arten' => [],
+            'benutzer' => []
+        ];
+    }
+
+    $in = implode(',', array_map('intval', $projectIds));
+
+    $objekte = $db->query(
+        "SELECT id, projekt_id, name
+         FROM objekte
+         WHERE projekt_id IN ($in)
+         ORDER BY name ASC"
+    )->fetch_all(MYSQLI_ASSOC);
+
+    $wohnungen = $db->query(
+        "SELECT w.id, w.objekt_id, w.name
+         FROM wohnungen w
+         INNER JOIN objekte o ON o.id = w.objekt_id
+         WHERE o.projekt_id IN ($in)
+         ORDER BY w.name ASC"
+    )->fetch_all(MYSQLI_ASSOC);
+
+    $raeume = $db->query(
+        "SELECT r.id, r.wohnung_id, r.name
+         FROM raeume r
+         INNER JOIN wohnungen w ON w.id = r.wohnung_id
+         INNER JOIN objekte o ON o.id = w.objekt_id
+         WHERE o.projekt_id IN ($in)
+         ORDER BY r.name ASC"
+    )->fetch_all(MYSQLI_ASSOC);
+
+    $arten = $db->query(
+        "SELECT id, name FROM pendenzen_arten ORDER BY name ASC"
+    )->fetch_all(MYSQLI_ASSOC);
+
+    $benutzer = $db->query(
+        "SELECT id, name FROM benutzer WHERE deleted_at IS NULL ORDER BY name ASC"
+    )->fetch_all(MYSQLI_ASSOC);
+
+    return compact('projekte', 'objekte', 'wohnungen', 'raeume', 'arten', 'benutzer');
+}
+
+function voice_normalize_audio_mime(string $mime): ?string
+{
+    $mime = strtolower(trim(explode(';', $mime, 2)[0] ?? ''));
+
+    if (in_array($mime, ['audio/mp4', 'audio/m4a', 'audio/aac', 'audio/x-m4a'], true)) {
+        return 'audio/mp4';
+    }
+    if (in_array($mime, ['audio/webm', 'video/webm'], true)) {
+        return 'audio/webm';
+    }
+    if (in_array($mime, ['audio/wav', 'audio/x-wav', 'audio/wave'], true)) {
+        return 'audio/wav';
+    }
+    if (in_array($mime, ['audio/ogg', 'application/ogg'], true)) {
+        return 'audio/ogg';
+    }
+
+    return null;
+}
+
+function voice_transcribe_audio(string $audioBase64, string $audioMime): string
+{
+    if (!defined('GEMINI_API_KEY') || trim((string) GEMINI_API_KEY) === '') {
+        return '';
+    }
+
+    if (preg_match('/^data:([^;]+);base64,(.*)$/s', $audioBase64, $matches)) {
+        $audioMime = (string) $matches[1];
+        $audioBase64 = (string) $matches[2];
+    }
+
+    // ca. 9 MB Rohdaten nach Base64-Decodierung. Für kurze Diktate mehr als ausreichend.
+    if ($audioBase64 === '' || strlen($audioBase64) > 12_000_000) {
+        json_response([
+            'ok' => false,
+            'error' => 'AUDIO_TOO_LARGE',
+            'message' => 'Die Sprachaufnahme ist zu gross. Bitte kürzer diktieren.'
+        ], 413);
+    }
+
+    $normalizedMime = voice_normalize_audio_mime($audioMime);
+    if ($normalizedMime === null) {
+        json_response([
+            'ok' => false,
+            'error' => 'UNSUPPORTED_AUDIO',
+            'message' => 'Dieses Audioformat wird nicht unterstützt.'
+        ], 415);
+    }
+
+    if (base64_decode($audioBase64, true) === false) {
+        json_response([
+            'ok' => false,
+            'error' => 'INVALID_AUDIO',
+            'message' => 'Die Sprachaufnahme konnte nicht gelesen werden.'
+        ], 400);
+    }
+
+    $models = [
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3-flash-preview'
+    ];
+
+    foreach ($models as $model) {
+        $url = sprintf(
+            'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s',
+            rawurlencode($model),
+            rawurlencode((string) GEMINI_API_KEY)
+        );
+
+        $payload = [
+            'contents' => [[
+                'parts' => [
+                    [
+                        'inlineData' => [
+                            'mimeType' => $normalizedMime,
+                            'data' => $audioBase64
                         ]
-                    ]],
-                    "generationConfig" => [
-                        "temperature" => 0.1,
-                        "maxOutputTokens" => 1024
+                    ],
+                    [
+                        'text' => 'Transkribiere diese Audionachricht für eine Schweizer Liegenschaftsverwaltung wortgetreu auf Deutsch. Gib nur den transkribierten Text zurück, ohne Anführungszeichen oder Erklärungen.'
                     ]
-                ];
+                ]
+            ]],
+            'generationConfig' => [
+                'temperature' => 0.1,
+                'maxOutputTokens' => 1024
+            ]
+        ];
 
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 12);
-                $res = curl_exec($ch);
-                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
+        $ch = curl_init($url);
+        if ($ch === false) {
+            continue;
+        }
 
-                if ($code === 200 && $res) {
-                    $j = json_decode($res, true);
-                    $t = trim($j['candidates'][0]['content']['parts'][0]['text'] ?? '');
-                    if ($t !== '') {
-                        $text = $t;
-                        break;
-                    }
-                }
-            }
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError !== '') {
+            error_log('[gimi-voice] Gemini transport error: ' . $curlError);
+            continue;
+        }
+
+        if ($httpCode !== 200 || !is_string($response) || $response === '') {
+            error_log('[gimi-voice] Gemini HTTP ' . $httpCode . ' for model ' . $model);
+            continue;
+        }
+
+        $decoded = json_decode($response, true);
+        $text = trim((string) ($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+        if ($text !== '') {
+            return $text;
         }
     }
 
-    if ($text === '' && $action !== 'save_direct') {
-        json_response(['ok' => false, 'error' => 'EMPTY_TEXT', 'message' => 'Kein gesprochener Text erkannt. Bitte erneut aufnehmen oder manuell tippen.'], 400);
-    }
-    
-    // 1. Stammdaten für KI/NLP Matcher abrufen
-    $projekte = $db->query("SELECT id, name FROM projekte ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    $objekte  = $db->query("SELECT id, projekt_id, name FROM objekte ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    $wohnungen = $db->query("SELECT id, objekt_id, name FROM wohnungen ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    $raeume    = $db->query("SELECT id, wohnung_id, name FROM raeume ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    $arten     = $db->query("SELECT id, name FROM pendenzen_arten ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    $benutzer  = $db->query("SELECT id, name FROM benutzer WHERE deleted_at IS NULL ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
-    
-    // 2. Intelligenter NLP-Parser für Schweizer Liegenschaftssprache
+    return '';
+}
+
+/**
+ * @param array<int,array<string,mixed>> $projekte
+ * @param array<int,array<string,mixed>> $objekte
+ * @param array<int,array<string,mixed>> $wohnungen
+ * @param array<int,array<string,mixed>> $raeume
+ * @param array<int,array<string,mixed>> $arten
+ * @param array<int,array<string,mixed>> $benutzer
+ * @return array<string,mixed>
+ */
+function voice_parse_text(
+    string $text,
+    array $projekte,
+    array $objekte,
+    array $wohnungen,
+    array $raeume,
+    array $arten,
+    array $benutzer
+): array {
     $parsed = [
         'projekt_id' => null,
         'projekt_name' => '',
@@ -130,83 +254,111 @@ api_try(function() {
         'beschreibung' => $text,
         'original_text' => $text
     ];
-    
+
     $lowerText = mb_strtolower($text, 'UTF-8');
-    
-    // A) Projekt-Erkennung
-    foreach ($projekte as $p) {
-        $pNameLower = mb_strtolower($p['name'], 'UTF-8');
-        // Ganzen Namen oder wesentliche Wortbestandteile prüfen (z.B. "Romanshorn", "Arbonerstrasse")
-        $tokens = preg_split('/[\s,_\-]+/', $pNameLower);
-        $matched = false;
-        if (mb_strpos($lowerText, $pNameLower) !== false) {
-            $matched = true;
-        } else {
-            foreach ($tokens as $t) {
-                if (mb_strlen($t) >= 4 && mb_strpos($lowerText, $t) !== false) {
+
+    // Projekt/Liegenschaft anhand Namen und aussagekräftiger Namensbestandteile erkennen.
+    foreach ($projekte as $project) {
+        $name = trim((string) ($project['name'] ?? ''));
+        $nameLower = mb_strtolower($name, 'UTF-8');
+        if ($nameLower === '') {
+            continue;
+        }
+
+        $matched = mb_strpos($lowerText, $nameLower) !== false;
+        if (!$matched) {
+            $tokens = preg_split('/[\s,_\-]+/u', $nameLower) ?: [];
+            foreach ($tokens as $token) {
+                if (mb_strlen($token, 'UTF-8') >= 4 && mb_strpos($lowerText, $token) !== false) {
                     $matched = true;
                     break;
                 }
             }
         }
+
         if ($matched) {
-            $parsed['projekt_id'] = (int)$p['id'];
-            $parsed['projekt_name'] = $p['name'];
+            $parsed['projekt_id'] = (int) $project['id'];
+            $parsed['projekt_name'] = $name;
             break;
         }
     }
-    
-    // B) Wohnungs-Erkennung
-    // z.B. "Wohnung 3", "Whg 2", "Einheit 4", "Wohnung 1.1", "Top 5"
-    if (preg_match('/(?:wohnung|whg|einheit|top)\s*([0-9a-zA-Z\.\-_]+)/ui', $text, $matches)) {
-        $foundNum = trim($matches[1]);
-        $padNum = is_numeric($foundNum) ? sprintf('%02d', (int)$foundNum) : $foundNum;
-        // Priorisiere Namens-Match ("Wohnung 03", "Whg 3")
-        foreach ($wohnungen as $w) {
-            $wNameLower = mb_strtolower($w['name'], 'UTF-8');
-            if (
-                mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
-                mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($padNum, 'UTF-8')) !== false ||
-                mb_strpos($wNameLower, 'whg ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
-                mb_strpos($wNameLower, 'whg ' . mb_strtolower($padNum, 'UTF-8')) !== false
-            ) {
-                $parsed['wohnung_id'] = (int)$w['id'];
-                $parsed['wohnung_name'] = $w['name'];
-                $parsed['objekt_id'] = (int)$w['objekt_id'];
-                break;
-            }
-        }
-        
-        // Fallback auf reine ID falls kein Namensmatch
-        if (!$parsed['wohnung_id']) {
-            foreach ($wohnungen as $w) {
-                if ((string)$w['id'] === $foundNum) {
-                    $parsed['wohnung_id'] = (int)$w['id'];
-                    $parsed['wohnung_name'] = $w['name'];
-                    $parsed['objekt_id'] = (int)$w['objekt_id'];
+
+    // Objektname direkt erkennen.
+    foreach ($objekte as $object) {
+        $name = trim((string) ($object['name'] ?? ''));
+        $nameLower = mb_strtolower($name, 'UTF-8');
+        if ($nameLower !== '' && mb_strlen($nameLower, 'UTF-8') >= 3 && mb_strpos($lowerText, $nameLower) !== false) {
+            $parsed['objekt_id'] = (int) $object['id'];
+            $parsed['objekt_name'] = $name;
+            $parsed['projekt_id'] = (int) $object['projekt_id'];
+            foreach ($projekte as $project) {
+                if ((int) $project['id'] === $parsed['projekt_id']) {
+                    $parsed['projekt_name'] = (string) $project['name'];
                     break;
+                }
+            }
+            break;
+        }
+    }
+
+    // Wohnung/Einheit erkennen.
+    if (preg_match('/(?:wohnung|whg|einheit|top)\s*([0-9a-zA-Z.\-_]+)/ui', $text, $matches)) {
+        $found = trim((string) $matches[1]);
+        $padded = is_numeric($found) ? sprintf('%02d', (int) $found) : $found;
+        foreach ($wohnungen as $wohnung) {
+            $nameLower = mb_strtolower((string) $wohnung['name'], 'UTF-8');
+            $candidates = [
+                'wohnung ' . mb_strtolower($found, 'UTF-8'),
+                'wohnung ' . mb_strtolower($padded, 'UTF-8'),
+                'whg ' . mb_strtolower($found, 'UTF-8'),
+                'whg ' . mb_strtolower($padded, 'UTF-8'),
+                'top ' . mb_strtolower($found, 'UTF-8'),
+                'einheit ' . mb_strtolower($found, 'UTF-8')
+            ];
+            foreach ($candidates as $candidate) {
+                if (mb_strpos($nameLower, $candidate) !== false) {
+                    $parsed['wohnung_id'] = (int) $wohnung['id'];
+                    $parsed['wohnung_name'] = (string) $wohnung['name'];
+                    $parsed['objekt_id'] = (int) $wohnung['objekt_id'];
+                    break 2;
                 }
             }
         }
     }
-    
-    // Falls noch keine Wohnung, gegen alle Wohnungsnamen matchen
+
     if (!$parsed['wohnung_id']) {
-        foreach ($wohnungen as $w) {
-            $wNameLower = mb_strtolower($w['name'], 'UTF-8');
-            if (mb_strlen($wNameLower) >= 3 && mb_strpos($lowerText, $wNameLower) !== false) {
-                $parsed['wohnung_id'] = (int)$w['id'];
-                $parsed['wohnung_name'] = $w['name'];
-                $parsed['objekt_id'] = (int)$w['objekt_id'];
+        foreach ($wohnungen as $wohnung) {
+            $nameLower = mb_strtolower((string) $wohnung['name'], 'UTF-8');
+            if (mb_strlen($nameLower, 'UTF-8') >= 3 && mb_strpos($lowerText, $nameLower) !== false) {
+                $parsed['wohnung_id'] = (int) $wohnung['id'];
+                $parsed['wohnung_name'] = (string) $wohnung['name'];
+                $parsed['objekt_id'] = (int) $wohnung['objekt_id'];
                 break;
             }
         }
     }
-    
-    // C) Raum-Erkennung
+
+    // Objekt/Projekt aus Wohnung vervollständigen.
+    if ($parsed['objekt_id']) {
+        foreach ($objekte as $object) {
+            if ((int) $object['id'] === (int) $parsed['objekt_id']) {
+                $parsed['objekt_name'] = (string) $object['name'];
+                $parsed['projekt_id'] = (int) $object['projekt_id'];
+                foreach ($projekte as $project) {
+                    if ((int) $project['id'] === (int) $parsed['projekt_id']) {
+                        $parsed['projekt_name'] = (string) $project['name'];
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Raum erkennen; wenn eine Wohnung erkannt wurde, nur deren Räume berücksichtigen.
     $roomKeywords = [
         'küche' => ['küche', 'kueche', 'kitchen'],
-        'bad' => ['bad', 'badezimmer', 'wc', 'toilette', 'dusche', 'bade-zimmer'],
+        'bad' => ['bad', 'badezimmer', 'wc', 'toilette', 'dusche'],
         'wohnen' => ['wohnen', 'wohnzimmer', 'stube', 'salon'],
         'schlafen' => ['schlafzimmer', 'elternschlafzimmer', 'elternzimmer', 'schlafen'],
         'zimmer' => ['kinderzimmer', 'zimmer'],
@@ -217,99 +369,50 @@ api_try(function() {
         'waschküche' => ['waschküche', 'waschkueche', 'waschraum'],
         'garage' => ['garage', 'tiefgarage', 'einstellplatz', 'parkplatz']
     ];
-    
-    // 1. Zuerst Räume der gematchten Wohnung prüfen
-    foreach ($raeume as $r) {
-        $rNameLower = mb_strtolower($r['name'], 'UTF-8');
-        if ($parsed['wohnung_id'] && (int)$r['wohnung_id'] !== $parsed['wohnung_id']) {
+
+    foreach ($raeume as $raum) {
+        if ($parsed['wohnung_id'] && (int) $raum['wohnung_id'] !== (int) $parsed['wohnung_id']) {
             continue;
         }
-        
-        $matchedRoom = false;
-        if (mb_strpos($lowerText, $rNameLower) !== false) {
-            $matchedRoom = true;
-        } else {
+
+        $nameLower = mb_strtolower((string) $raum['name'], 'UTF-8');
+        $matched = $nameLower !== '' && mb_strpos($lowerText, $nameLower) !== false;
+
+        if (!$matched) {
             foreach ($roomKeywords as $category => $synonyms) {
-                if (mb_strpos($rNameLower, $category) !== false) {
-                    foreach ($synonyms as $syn) {
-                        if (preg_match('/\b' . preg_quote($syn, '/') . '\b/ui', $lowerText)) {
-                            $matchedRoom = true;
-                            break 2;
-                        }
+                if (mb_strpos($nameLower, $category) === false) {
+                    continue;
+                }
+                foreach ($synonyms as $synonym) {
+                    if (preg_match('/\b' . preg_quote($synonym, '/') . '\b/ui', $lowerText)) {
+                        $matched = true;
+                        break 2;
                     }
                 }
             }
         }
-        
-        if ($matchedRoom) {
-            $parsed['raum_id'] = (int)$r['id'];
-            $parsed['raum_name'] = $r['name'];
+
+        if ($matched) {
+            $parsed['raum_id'] = (int) $raum['id'];
+            $parsed['raum_name'] = (string) $raum['name'];
             break;
         }
     }
-    
-    // 2. Falls noch kein Raum und keine Wohnung, global suchen
-    if (!$parsed['raum_id'] && !$parsed['wohnung_id']) {
-        foreach ($raeume as $r) {
-            $rNameLower = mb_strtolower($r['name'], 'UTF-8');
-            $matchedRoom = false;
-            if (mb_strpos($lowerText, $rNameLower) !== false) {
-                $matchedRoom = true;
-            } else {
-                foreach ($roomKeywords as $category => $synonyms) {
-                    if (mb_strpos($rNameLower, $category) !== false) {
-                        foreach ($synonyms as $syn) {
-                            if (preg_match('/\b' . preg_quote($syn, '/') . '\b/ui', $lowerText)) {
-                                $matchedRoom = true;
-                                break 2;
-                            }
-                        }
-                    }
-                }
-            }
-            if ($matchedRoom) {
-                $parsed['raum_id'] = (int)$r['id'];
-                $parsed['raum_name'] = $r['name'];
-                if (!empty($r['wohnung_id'])) {
-                    $parsed['wohnung_id'] = (int)$r['wohnung_id'];
-                    foreach ($wohnungen as $w) {
-                        if ((int)$w['id'] === (int)$r['wohnung_id']) {
-                            $parsed['wohnung_name'] = $w['name'];
-                            $parsed['objekt_id'] = (int)$w['objekt_id'];
-                            break;
-                        }
-                    }
-                }
-                break;
-            }
+
+    // Zuständiger Benutzer anhand explizitem Namen erkennen.
+    foreach ($benutzer as $person) {
+        $name = trim((string) ($person['name'] ?? ''));
+        if ($name === '' || mb_strlen($name, 'UTF-8') < 3) {
+            continue;
+        }
+        if (mb_strpos($lowerText, mb_strtolower($name, 'UTF-8')) !== false) {
+            $parsed['zustaendig_id'] = (int) $person['id'];
+            $parsed['zustaendig_name'] = $name;
+            break;
         }
     }
-    
-    // Falls Objekt aus Wohnung bekannt, Projekt auflösen falls noch nicht gesetzt
-    if ($parsed['objekt_id'] && !$parsed['projekt_id']) {
-        foreach ($objekte as $o) {
-            if ((int)$o['id'] === $parsed['objekt_id']) {
-                $parsed['objekt_name'] = $o['name'];
-                $parsed['projekt_id'] = (int)$o['projekt_id'];
-                foreach ($projekte as $p) {
-                    if ((int)$p['id'] === (int)$o['projekt_id']) {
-                        $parsed['projekt_name'] = $p['name'];
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-    } elseif ($parsed['objekt_id']) {
-        foreach ($objekte as $o) {
-            if ((int)$o['id'] === $parsed['objekt_id']) {
-                $parsed['objekt_name'] = $o['name'];
-                break;
-            }
-        }
-    }
-    
-    // D) Wichtigkeit / Priorität
+
+    // Priorität.
     if (preg_match('/\b(notfall|sofort|sehr dringend|akut|wasserschaden|brandgefahr|gefahr)\b/ui', $lowerText)) {
         $parsed['wichtigkeit'] = 5;
         $parsed['wichtigkeit_label'] = '🔥 Notfall / Höchste';
@@ -319,23 +422,22 @@ api_try(function() {
     } elseif (preg_match('/\b(niedrig|zeitnah|keine eile|nachrangig|gering|später)\b/ui', $lowerText)) {
         $parsed['wichtigkeit'] = 2;
         $parsed['wichtigkeit_label'] = '⚪ Niedrig';
-    } else {
-        $parsed['wichtigkeit'] = 3;
-        $parsed['wichtigkeit_label'] = 'Normal';
     }
-    
-    // E) Frist / Datum
-    if (preg_match('/\bheute\b/ui', $lowerText)) {
+
+    // Frist / Datum. "übermorgen" muss vor "morgen" geprüft werden.
+    if (preg_match('/\bübermorgen\b/ui', $lowerText)) {
+        $date = date('Y-m-d', strtotime('+2 days'));
+        $parsed['enddatum'] = $date;
+        $parsed['enddatum_label'] = 'Übermorgen (' . date('d.m.Y', strtotime($date)) . ')';
+    } elseif (preg_match('/\bmorgen\b/ui', $lowerText)) {
+        $date = date('Y-m-d', strtotime('+1 day'));
+        $parsed['enddatum'] = $date;
+        $parsed['enddatum_label'] = 'Morgen (' . date('d.m.Y', strtotime($date)) . ')';
+    } elseif (preg_match('/\bheute\b/ui', $lowerText)) {
         $parsed['enddatum'] = date('Y-m-d');
         $parsed['enddatum_label'] = 'Heute (' . date('d.m.Y') . ')';
-    } elseif (preg_match('/\bmorgen\b/ui', $lowerText)) {
-        $parsed['enddatum'] = date('Y-m-d', strtotime('+1 day'));
-        $parsed['enddatum_label'] = 'Morgen (' . date('d.m.Y', strtotime('+1 day')) . ')';
-    } elseif (preg_match('/\bübermorgen\b/ui', $lowerText)) {
-        $parsed['enddatum'] = date('Y-m-d', strtotime('+2 days'));
-        $parsed['enddatum_label'] = 'Übermorgen (' . date('d.m.Y', strtotime('+2 days')) . ')';
-    } elseif (preg_match('/\bbis\s+(freitag|montag|dienstag|mittwoch|donnerstag|samstag|sonntag)\b/ui', $lowerText, $dm)) {
-        $weekday = strtolower($dm[1]);
+    } elseif (preg_match('/\bbis\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/ui', $lowerText, $matches)) {
+        $weekday = mb_strtolower((string) $matches[1], 'UTF-8');
         $map = [
             'montag' => 'next monday',
             'dienstag' => 'next tuesday',
@@ -345,71 +447,183 @@ api_try(function() {
             'samstag' => 'next saturday',
             'sonntag' => 'next sunday'
         ];
-        $targetDay = $map[$weekday] ?? '+3 days';
-        $d = date('Y-m-d', strtotime($targetDay));
-        $parsed['enddatum'] = $d;
-        $parsed['enddatum_label'] = ucfirst($weekday) . ' (' . date('d.m.Y', strtotime($d)) . ')';
+        $date = date('Y-m-d', strtotime($map[$weekday]));
+        $parsed['enddatum'] = $date;
+        $parsed['enddatum_label'] = ucfirst($weekday) . ' (' . date('d.m.Y', strtotime($date)) . ')';
     } elseif (preg_match('/\bbis\s+ende\s+woche\b/ui', $lowerText)) {
-        $d = date('Y-m-d', strtotime('this week sunday'));
-        $parsed['enddatum'] = $d;
-        $parsed['enddatum_label'] = 'Ende Woche (' . date('d.m.Y', strtotime($d)) . ')';
+        $date = date('Y-m-d', strtotime('this week sunday'));
+        $parsed['enddatum'] = $date;
+        $parsed['enddatum_label'] = 'Ende Woche (' . date('d.m.Y', strtotime($date)) . ')';
     } elseif (preg_match('/\bbis\s+ende\s+monat\b/ui', $lowerText)) {
-        $d = date('Y-m-t');
-        $parsed['enddatum'] = $d;
-        $parsed['enddatum_label'] = 'Ende Monat (' . date('d.m.Y', strtotime($d)) . ')';
-    } elseif (preg_match('/\b(?:bis\s+)?(\d{1,2})\.(\d{1,2})\.?(\d{4})?\b/u', $lowerText, $dm)) {
-        $day = (int)$dm[1];
-        $month = (int)$dm[2];
-        $year = !empty($dm[3]) ? (int)$dm[3] : (int)date('Y');
-        $parsed['enddatum'] = sprintf('%04d-%02d-%02d', $year, $month, $day);
-        $parsed['enddatum_label'] = sprintf('%02d.%02d.%04d', $day, $month, $year);
+        $date = date('Y-m-t');
+        $parsed['enddatum'] = $date;
+        $parsed['enddatum_label'] = 'Ende Monat (' . date('d.m.Y', strtotime($date)) . ')';
+    } elseif (preg_match('/\b(?:bis\s+)?(\d{1,2})\.(\d{1,2})\.?(\d{4})?\b/u', $lowerText, $matches)) {
+        $day = (int) $matches[1];
+        $month = (int) $matches[2];
+        $year = !empty($matches[3]) ? (int) $matches[3] : (int) date('Y');
+        if (checkdate($month, $day, $year)) {
+            $parsed['enddatum'] = sprintf('%04d-%02d-%02d', $year, $month, $day);
+            $parsed['enddatum_label'] = sprintf('%02d.%02d.%04d', $day, $month, $year);
+        }
     }
-    
-    // F) Vorgangsart
+
+    // Vorgangsart.
     foreach ($arten as $art) {
-        $aLower = mb_strtolower($art['name'], 'UTF-8');
-        if (mb_strpos($lowerText, $aLower) !== false) {
-            $parsed['vorgangsart_id'] = (int)$art['id'];
-            $parsed['vorgangsart_name'] = $art['name'];
+        $name = trim((string) ($art['name'] ?? ''));
+        if ($name !== '' && mb_strpos($lowerText, mb_strtolower($name, 'UTF-8')) !== false) {
+            $parsed['vorgangsart_id'] = (int) $art['id'];
+            $parsed['vorgangsart_name'] = $name;
             break;
         }
     }
-    if (!$parsed['vorgangsart_id']) {
-        if (preg_match('/\b(reparatur|defekt|tropft|kaputt|klemmt|rinnt|schaden|mangel)\b/ui', $lowerText)) {
-            // Finde Mangel oder Reparatur
-            foreach ($arten as $art) {
-                $aLower = mb_strtolower($art['name'], 'UTF-8');
-                if (str_contains($aLower, 'reparatur') || str_contains($aLower, 'mangel') || str_contains($aLower, 'schaden')) {
-                    $parsed['vorgangsart_id'] = (int)$art['id'];
-                    $parsed['vorgangsart_name'] = $art['name'];
-                    break;
-                }
+
+    if (!$parsed['vorgangsart_id'] && preg_match('/\b(reparatur|defekt|tropft|kaputt|klemmt|rinnt|schaden|mangel)\b/ui', $lowerText)) {
+        foreach ($arten as $art) {
+            $nameLower = mb_strtolower((string) $art['name'], 'UTF-8');
+            if (str_contains($nameLower, 'reparatur') || str_contains($nameLower, 'mangel') || str_contains($nameLower, 'schaden')) {
+                $parsed['vorgangsart_id'] = (int) $art['id'];
+                $parsed['vorgangsart_name'] = (string) $art['name'];
+                break;
             }
         }
     }
-    // Standard falls keine gefunden
-    if (!$parsed['vorgangsart_id'] && !empty($arten)) {
-        $parsed['vorgangsart_id'] = (int)$arten[0]['id'];
-        $parsed['vorgangsart_name'] = $arten[0]['name'];
+
+    if (!$parsed['vorgangsart_id'] && $arten !== []) {
+        $parsed['vorgangsart_id'] = (int) $arten[0]['id'];
+        $parsed['vorgangsart_name'] = (string) $arten[0]['name'];
     }
-    
-    // G) Titel-Generierung: Bereinige den Text um Standard-Füllwörter
-    $cleanTitle = $text;
-    $cleanTitle = preg_replace('/^(bitte\s+)?(in\s+)?([0-9a-zA-Z\.\-_]+\s+)?(wohnung\s+[0-9a-zA-Z\.\-_]+\s+)?(im\s+[a-zA-ZäöüÄÖÜ]+\s+)?/ui', '', $cleanTitle);
-    $cleanTitle = preg_replace('/\b(dringend|sofort|bis\s+[a-zA-Z0-9\.\s]+|bitte|erledigen)\b/ui', '', $cleanTitle);
-    $cleanTitle = trim(preg_replace('/\s+/', ' ', $cleanTitle), " ,.:;-");
-    
-    if (mb_strlen($cleanTitle) > 5) {
-        $parsed['titel'] = mb_strtoupper(mb_substr($cleanTitle, 0, 1)) . mb_substr($cleanTitle, 1);
-    } else {
-        $parsed['titel'] = mb_strtoupper(mb_substr($text, 0, 1)) . mb_substr($text, 1);
+
+    // Kurzen Titel erzeugen, Originaltext bleibt vollständig in beschreibung/original_text erhalten.
+    $cleanTitle = preg_replace(
+        '/^(bitte\s+)?(in\s+)?([0-9a-zA-Z.\-_]+\s+)?(wohnung\s+[0-9a-zA-Z.\-_]+\s+)?(im\s+[a-zA-ZäöüÄÖÜ]+\s+)?/ui',
+        '',
+        $text
+    ) ?? $text;
+    $cleanTitle = preg_replace('/\b(dringend|sofort|bitte|erledigen)\b/ui', '', $cleanTitle) ?? $cleanTitle;
+    $cleanTitle = trim((string) preg_replace('/\s+/u', ' ', $cleanTitle), " ,.:;-\t\n\r\0\x0B");
+
+    $title = mb_strlen($cleanTitle, 'UTF-8') > 5 ? $cleanTitle : trim($text);
+    if ($title === '') {
+        $title = 'Voice-Pendenz';
     }
-    // Titel auf max 150 Zeichen kürzen
-    if (mb_strlen($parsed['titel']) > 150) {
-        $parsed['titel'] = mb_substr($parsed['titel'], 0, 147) . '...';
+    $title = mb_strtoupper(mb_substr($title, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($title, 1, null, 'UTF-8');
+    if (mb_strlen($title, 'UTF-8') > 150) {
+        $title = mb_substr($title, 0, 147, 'UTF-8') . '...';
     }
-    
-    // 3. Aktion ausführen
+    $parsed['titel'] = $title;
+
+    return $parsed;
+}
+
+function voice_validate_relation(mysqli $db, string $kind, ?int $id, int $projectId): void
+{
+    if (!$id) {
+        return;
+    }
+
+    $sql = match ($kind) {
+        'objekt' => "SELECT 1 FROM objekte WHERE id = ? AND projekt_id = ? LIMIT 1",
+        'wohnung' => "SELECT 1 FROM wohnungen w INNER JOIN objekte o ON o.id = w.objekt_id WHERE w.id = ? AND o.projekt_id = ? LIMIT 1",
+        'raum' => "SELECT 1 FROM raeume r INNER JOIN wohnungen w ON w.id = r.wohnung_id INNER JOIN objekte o ON o.id = w.objekt_id WHERE r.id = ? AND o.projekt_id = ? LIMIT 1",
+        default => throw new InvalidArgumentException('Unbekannte Relation')
+    };
+
+    $stmt = $db->prepare($sql);
+    $stmt->bind_param('ii', $id, $projectId);
+    $stmt->execute();
+    $valid = (bool) $stmt->get_result()->fetch_row();
+    $stmt->close();
+
+    if (!$valid) {
+        json_response([
+            'ok' => false,
+            'error' => 'INVALID_RELATION',
+            'message' => 'Die gewählte Zuordnung gehört nicht zur ausgewählten Liegenschaft.'
+        ], 422);
+    }
+}
+
+api_try(function (): void {
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        header('Allow: POST');
+        json_response([
+            'ok' => false,
+            'error' => 'METHOD_NOT_ALLOWED',
+            'message' => 'Nur POST ist erlaubt.'
+        ], 405);
+    }
+
+    $db = db();
+    $userId = require_login_json();
+
+    $stmtUser = $db->prepare(
+        "SELECT id FROM benutzer WHERE id = ? AND deleted_at IS NULL AND COALESCE(is_blocked, 0) = 0 LIMIT 1"
+    );
+    $stmtUser->bind_param('i', $userId);
+    $stmtUser->execute();
+    $validUser = (bool) $stmtUser->get_result()->fetch_row();
+    $stmtUser->close();
+
+    if (!$validUser) {
+        json_response([
+            'ok' => false,
+            'error' => 'INVALID_SESSION',
+            'message' => 'Benutzerkonto nicht verfügbar. Bitte neu einloggen.'
+        ], 401);
+    }
+
+    $rawInput = file_get_contents('php://input');
+    $decoded = json_decode((string) $rawInput, true);
+    $data = is_array($decoded) ? $decoded : $_POST;
+
+    $action = (string) ($data['action'] ?? 'parse');
+    if (!in_array($action, ['parse', 'save', 'save_direct'], true)) {
+        json_response(['ok' => false, 'error' => 'UNKNOWN_ACTION'], 400);
+    }
+
+    $text = trim((string) ($data['text'] ?? ''));
+    $audioBase64 = trim((string) ($data['audio_base64'] ?? ''));
+    $audioMime = trim((string) ($data['audio_mime'] ?? 'audio/webm'));
+
+    if ($text === '' && $audioBase64 !== '') {
+        $text = voice_transcribe_audio($audioBase64, $audioMime);
+        if ($text === '') {
+            json_response([
+                'ok' => false,
+                'error' => 'AUDIO_TRANSCRIPTION_FAILED',
+                'message' => 'Die Aufnahme konnte nicht transkribiert werden. Bitte nochmals aufnehmen oder die Tastatur-Diktierfunktion verwenden.'
+            ], 502);
+        }
+    }
+
+    if ($text === '') {
+        json_response([
+            'ok' => false,
+            'error' => 'EMPTY_TEXT',
+            'message' => 'Kein gesprochener Text erkannt. Bitte erneut aufnehmen oder manuell tippen.'
+        ], 400);
+    }
+
+    if (mb_strlen($text, 'UTF-8') > 5000) {
+        json_response([
+            'ok' => false,
+            'error' => 'TEXT_TOO_LONG',
+            'message' => 'Der Text ist zu lang. Bitte kürzer diktieren.'
+        ], 413);
+    }
+
+    $context = voice_context($db, $userId);
+    $parsed = voice_parse_text(
+        $text,
+        $context['projekte'],
+        $context['objekte'],
+        $context['wohnungen'],
+        $context['raeume'],
+        $context['arten'],
+        $context['benutzer']
+    );
+
     if ($action === 'parse') {
         json_response([
             'ok' => true,
@@ -417,74 +631,117 @@ api_try(function() {
             'parsed' => $parsed
         ]);
     }
-    
-    if ($action === 'save' || $action === 'save_direct') {
-        // Falls Daten im Request überschrieben wurden (z.B. nach Benutzer-Korrektur)
-        $pId = !empty($data['projekt_id']) ? (int)$data['projekt_id'] : $parsed['projekt_id'];
-        $vId = !empty($data['vorgangsart_id']) ? (int)$data['vorgangsart_id'] : $parsed['vorgangsart_id'];
-        $oId = !empty($data['objekt_id']) ? (int)$data['objekt_id'] : $parsed['objekt_id'];
-        $wId = !empty($data['wohnung_id']) ? (int)$data['wohnung_id'] : $parsed['wohnung_id'];
-        $rId = !empty($data['raum_id']) ? (int)$data['raum_id'] : $parsed['raum_id'];
-        $finalTitel = trim((string)($data['titel'] ?? $parsed['titel']));
-        $finalDesc  = trim((string)($data['beschreibung'] ?? $parsed['beschreibung']));
-        $wichtig    = !empty($data['wichtigkeit']) ? (int)$data['wichtigkeit'] : $parsed['wichtigkeit'];
-        $enddatum   = !empty($data['enddatum']) ? $data['enddatum'] : $parsed['enddatum'];
-        $zId        = !empty($data['zustaendig_id']) ? (int)$data['zustaendig_id'] : $parsed['zustaendig_id'];
-        
-        if ($finalTitel === '') {
-            $finalTitel = 'Voice-Pendenz vom ' . date('d.m.Y H:i');
+
+    $projectId = !empty($data['projekt_id']) ? (int) $data['projekt_id'] : (int) ($parsed['projekt_id'] ?? 0);
+    $vorgangsartId = !empty($data['vorgangsart_id']) ? (int) $data['vorgangsart_id'] : (int) ($parsed['vorgangsart_id'] ?? 0);
+    $objektId = !empty($data['objekt_id']) ? (int) $data['objekt_id'] : (int) ($parsed['objekt_id'] ?? 0);
+    $wohnungId = !empty($data['wohnung_id']) ? (int) $data['wohnung_id'] : (int) ($parsed['wohnung_id'] ?? 0);
+    $raumId = !empty($data['raum_id']) ? (int) $data['raum_id'] : (int) ($parsed['raum_id'] ?? 0);
+    $zustaendigId = !empty($data['zustaendig_id']) ? (int) $data['zustaendig_id'] : (int) ($parsed['zustaendig_id'] ?? 0);
+
+    require_project_access_json($db, $projectId);
+    voice_validate_relation($db, 'objekt', $objektId ?: null, $projectId);
+    voice_validate_relation($db, 'wohnung', $wohnungId ?: null, $projectId);
+    voice_validate_relation($db, 'raum', $raumId ?: null, $projectId);
+
+    $finalTitle = trim((string) ($data['titel'] ?? $parsed['titel']));
+    $finalDescription = trim((string) ($data['beschreibung'] ?? $parsed['beschreibung']));
+    $priority = !empty($data['wichtigkeit']) ? (int) $data['wichtigkeit'] : (int) $parsed['wichtigkeit'];
+    $priority = max(1, min(5, $priority));
+    $endDate = !empty($data['enddatum']) ? trim((string) $data['enddatum']) : (string) ($parsed['enddatum'] ?? '');
+    $endDate = $endDate !== '' ? $endDate : null;
+
+    if ($endDate !== null) {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $endDate);
+        if (!$date || $date->format('Y-m-d') !== $endDate) {
+            json_response([
+                'ok' => false,
+                'error' => 'INVALID_DATE',
+                'message' => 'Ungültiges Fälligkeitsdatum.'
+            ], 422);
         }
-        
-        $newToken = bin2hex(random_bytes(16));
-        $extraJson = json_encode(['source' => 'voice_assistant', 'spoken_text' => $text], JSON_UNESCAPED_UNICODE);
-        
-        $sqlInsert = "
-            INSERT INTO pendenzen (
-                mandant_id, projekt_id, vorgangsart_id, objekt_id, wohnung_id, raum_id,
-                titel, kurzbeschreibung, beschreibung,
-                status, wichtigkeit, startdatum, enddatum,
-                send_now, erstellt_von, sichtbarkeit, assignee_can_edit, zustaendig_id,
-                confirmation_required, confirmation_by, external_can_view, external_can_upload,
-                public_enabled, public_token, extra_json, zustaendig_typ
-            ) VALUES (
-                0, ?, ?, ?, ?, ?, ?, ?, ?, 'offen', ?, CURDATE(), ?, 0, ?, 'projekt', 1, ?, 0, 'assignee', 1, 1, 1, ?, ?, 'user'
-            )
-        ";
-        
-        $stmt = $db->prepare($sqlInsert);
-        $stmt->bind_param(
-            'iiiiisssisisss',
-            $pId,
-            $vId,
-            $oId,
-            $wId,
-            $rId,
-            $finalTitel,
-            $finalTitel,
-            $finalDesc,
-            $wichtig,
-            $enddatum,
-            $userId,
-            $zId,
-            $newToken,
-            $extraJson
-        );
-        
-        $ok = $stmt->execute();
-        $newId = $ok ? (int)$stmt->insert_id : 0;
-        $stmt->close();
-        
-        if (!$ok || $newId === 0) {
-            json_response(['ok' => false, 'error' => 'DB_INSERT_FAILED', 'message' => 'Speichern der Pendenz fehlgeschlagen.'], 500);
-        }
-        
-        json_response([
-            'ok' => true,
-            'id' => $newId,
-            'message' => "Pendenz #{$newId} erfolgreich via Sprache erfasst!",
-            'parsed' => $parsed
-        ]);
     }
-    
-    json_response(['ok' => false, 'error' => 'UNKNOWN_ACTION'], 400);
+
+    if ($finalTitle === '') {
+        $finalTitle = 'Voice-Pendenz vom ' . date('d.m.Y H:i');
+    }
+    if (mb_strlen($finalTitle, 'UTF-8') > 180) {
+        $finalTitle = mb_substr($finalTitle, 0, 177, 'UTF-8') . '...';
+    }
+
+    if ($zustaendigId > 0) {
+        $stmtAssignee = $db->prepare("SELECT 1 FROM benutzer WHERE id = ? AND deleted_at IS NULL LIMIT 1");
+        $stmtAssignee->bind_param('i', $zustaendigId);
+        $stmtAssignee->execute();
+        $assigneeValid = (bool) $stmtAssignee->get_result()->fetch_row();
+        $stmtAssignee->close();
+        if (!$assigneeValid) {
+            $zustaendigId = 0;
+        }
+    }
+
+    $newToken = bin2hex(random_bytes(16));
+    $extraJson = json_encode([
+        'source' => 'voice_assistant',
+        'spoken_text' => $text
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    // Voice-Erfassung ist intern. Öffentliche Freigabe wird bewusst NICHT automatisch aktiviert.
+    $sqlInsert = "
+        INSERT INTO pendenzen (
+            mandant_id, projekt_id, vorgangsart_id, objekt_id, wohnung_id, raum_id,
+            titel, kurzbeschreibung, beschreibung,
+            status, wichtigkeit, startdatum, enddatum,
+            send_now, erstellt_von, sichtbarkeit, assignee_can_edit, zustaendig_id,
+            confirmation_required, confirmation_by, external_can_view, external_can_upload,
+            public_enabled, public_token, extra_json, zustaendig_typ
+        ) VALUES (
+            0, ?, ?, ?, ?, ?, ?, ?, ?, 'offen', ?, CURDATE(), ?,
+            0, ?, 'projekt', 1, ?, 0, 'assignee', 0, 0, 0, ?, ?, 'user'
+        )
+    ";
+
+    $vorgangsartParam = $vorgangsartId > 0 ? $vorgangsartId : null;
+    $objektParam = $objektId > 0 ? $objektId : null;
+    $wohnungParam = $wohnungId > 0 ? $wohnungId : null;
+    $raumParam = $raumId > 0 ? $raumId : null;
+    $zustaendigParam = $zustaendigId > 0 ? $zustaendigId : null;
+
+    $stmt = $db->prepare($sqlInsert);
+    $stmt->bind_param(
+        'iiiiisssisii ss',
+        $projectId,
+        $vorgangsartParam,
+        $objektParam,
+        $wohnungParam,
+        $raumParam,
+        $finalTitle,
+        $finalTitle,
+        $finalDescription,
+        $priority,
+        $endDate,
+        $userId,
+        $zustaendigParam,
+        $newToken,
+        $extraJson
+    );
+
+    $stmt->execute();
+    $newId = (int) $stmt->insert_id;
+    $stmt->close();
+
+    if ($newId <= 0) {
+        json_response([
+            'ok' => false,
+            'error' => 'DB_INSERT_FAILED',
+            'message' => 'Speichern der Pendenz fehlgeschlagen.'
+        ], 500);
+    }
+
+    json_response([
+        'ok' => true,
+        'id' => $newId,
+        'message' => "Pendenz #{$newId} erfolgreich via Sprache erfasst!",
+        'parsed' => $parsed
+    ]);
 });
