@@ -79,7 +79,7 @@ if ($resP) {
     }
 }
 
-$pid = isset($_GET['projekt_id']) ? (int)$_GET['projekt_id'] : 0;
+$pid = isset($_GET['projekt_id']) ? (int)$_GET['projekt_id'] : (int)($_SESSION['current_project_id'] ?? 0);
 if ($pid <= 0 && !empty($projekte)) {
     $pid = (int)$projekte[0]['id'];
 }
