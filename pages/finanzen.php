@@ -415,6 +415,7 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
             <a href="<?= e(url('tools/konto_verwaltung/index.php')) ?>" class="fin-btn fin-btn-blue">🏦 Bankkonto &amp; CSV-Import</a>
             <a href="<?= e(url('tools/liegenschaftsabrechnung/index.php')) ?>" class="fin-btn" style="background:#7c3aed; color:#fff; font-weight:700;">📑 Liegenschaftsabrechnung</a>
             <a href="<?= e(url('tools/nebenkostenabrechnung/index.php')) ?>" class="fin-btn" style="background:#0f766e; color:#fff; font-weight:700;">📑 Nebenkostenabrechnung</a>
+            <a href="<?= e(url('tools/finanzgruppen/index.php')) ?>" class="fin-btn" style="background:#475569; color:#fff; font-weight:700;">🗂️ Finanzgruppen</a>
             <a href="<?= e(url('pages/mieterspiegel.php')) ?>" class="fin-btn fin-btn-slate">📋 Mieterspiegel</a>
         </div>
     </header>

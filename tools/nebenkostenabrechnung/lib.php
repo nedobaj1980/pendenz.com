@@ -16,7 +16,20 @@ function nk_calculate_statement(array $bookings,array $units,int $daysInPeriod,f
     $ownerEffective=$owner['unterhalt']+$owner['verwaltung']; $ownerFlat=round($tenantTotal*$flatRate,2);
     return ['tenant_total'=>round($tenantTotal,2),'by_unit'=>$byUnit,'owner'=>$owner,'owner_effective'=>round($ownerEffective,2),'owner_flat'=> $ownerFlat,'owner_recommended'=>min($ownerEffective,$ownerFlat),'warnings'=>array_values(array_unique($warnings))];
 }
+function nk_match_group(string $text, array $groups): ?array {
+    foreach ($groups as $group) {
+        $name = trim((string)($group['name'] ?? ''));
+        if ($name !== '' && stripos($text, $name) !== false) return $group;
+    }
+    return null;
+}
+function nk_load_groups(mysqli $db, int $projectId, string $tool='beide'): array {
+    $st = $db->prepare("SELECT * FROM finance_groups WHERE active=1 AND (projekt_id IS NULL OR projekt_id=?) AND (tool=? OR tool='beide') ORDER BY projekt_id IS NOT NULL DESC, sort_order, name");
+    if (!$st) return [];
+    $st->bind_param('is', $projectId, $tool); $st->execute(); $rows=$st->get_result()->fetch_all(MYSQLI_ASSOC); $st->close(); return $rows;
+}
 function nk_load_bookings(mysqli $db,int $projectId,int $year): array {
     $from=$year.'-01-01'; $to=$year.'-12-31'; $st=$db->prepare("SELECT id,betrag,beschreibung,kategorie FROM liegenschafts_konto WHERE (liegenschaft_id=? OR projekt_id=?) AND buchungsdatum BETWEEN ? AND ? AND betrag<0 ORDER BY buchungsdatum,id"); $st->bind_param('iiss',$projectId,$projectId,$from,$to); $st->execute(); $rows=$st->get_result()->fetch_all(MYSQLI_ASSOC); $st->close();
-    foreach($rows as &$r){$r['tenant_allocable']=stripos((string)$r['kategorie'],'Betrieb')!==false || stripos((string)$r['kategorie'],'Nebenkosten')!==false; $r['verteilerschluessel']='area'; $r['steuerklasse']=$r['tenant_allocable']?'unbekannt':'unterhalt';} return $rows;
+    $groups=nk_load_groups($db,$projectId,'nebenkosten');
+    foreach($rows as &$r){$g=nk_match_group((string)$r['kategorie'].' '.(string)$r['beschreibung'],$groups);$r['tenant_allocable']=$g?(bool)$g['tenant_allocable']:(stripos((string)$r['kategorie'],'Betrieb')!==false || stripos((string)$r['kategorie'],'Nebenkosten')!==false);$r['verteilerschluessel']=$g?($g['distribution_key']??'area'):'area';$r['steuerklasse']=$g?($g['tax_class']??'unbekannt'):($r['tenant_allocable']?'unbekannt':'unterhalt');} return $rows;
 }

@@ -15,6 +15,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/authz.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/fs.php';
+require_once __DIR__ . '/../nebenkostenabrechnung/bootstrap.php';
+require_once __DIR__ . '/../nebenkostenabrechnung/lib.php';
 if (file_exists(__DIR__ . '/../../includes/csrf.php')) {
     require_once __DIR__ . '/../../includes/csrf.php';
 }
@@ -39,6 +41,7 @@ global $mysqli;
 if (!isset($mysqli) || !($mysqli instanceof mysqli)) {
     $mysqli = $GLOBALS['mysqli'] ?? $GLOBALS['db'] ?? null;
 }
+nk_bootstrap($mysqli);
 
 // -------------------------------------------------------------
 // POST Handling: Schnell-Kategorisierung / Notiz ändern
@@ -257,6 +260,7 @@ $gruppen = [
 ];
 
 // Automatische Zuordnung jeder Buchung
+$customGroups = nk_load_groups($mysqli, $pid, 'liegenschaft');
 foreach ($buchungen as &$b) {
     $kat = (string)($b['kategorie'] ?? '');
     $txt = (string)($b['beschreibung'] ?? '');
@@ -266,8 +270,18 @@ foreach ($buchungen as &$b) {
     $matchedMain = null;
     $matchedSub = null;
 
+    // Projektbezogene eigene Gruppe hat Vorrang vor der Standardautomatik.
+    $custom = nk_match_group($kat . ' ' . $txt, $customGroups);
+    if ($custom) {
+        $map = ['unterhalt'=>['unterhalt','reparaturen'], 'investition'=>['investition','investitionen'], 'verwaltung'=>['finanz_admin','verwaltung'], 'finanzierung'=>['finanz_admin','hypothek'], 'privat'=>['eigentuemer', $betrag < 0 ? 'auszahlung' : 'einlage']];
+        $mapped = $map[$custom['tax_class'] ?? ''] ?? null;
+        if ($mapped) { $matchedMain=$mapped[0]; $matchedSub=$mapped[1]; }
+    }
+
     // 1. Mieteinnahmen & Erträge
-    if (stripos($kat, 'Mietzins') !== false || $kat === 'Miete' || stripos($kat, 'Mieteinnahmen') !== false) {
+    if ($matchedMain !== null) {
+        // Bereits durch eine eigene Projektgruppe zugeordnet.
+    } elseif (stripos($kat, 'Mietzins') !== false || $kat === 'Miete' || stripos($kat, 'Mieteinnahmen') !== false) {
         $matchedMain = 'ertrag';
         $matchedSub = 'miete';
     } elseif ($betrag > 0 && (stripos($txt, 'Miete') !== false || stripos($txt, 'Mietzins') !== false)) {
@@ -1077,6 +1091,7 @@ require_once __DIR__ . '/../../includes/nav_dispatch.php';
       </form>
       <a href="../konto_verwaltung/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="la-btn la-btn-emerald">💳 Zum Bankkonto</a>
       <a href="../mietkontrolle/index.php?projekt_id=<?= $pid ?>&jahr=<?= $selYear ?>" class="la-btn la-btn-indigo">💰 Zur Mietkontrolle</a>
+      <a href="../finanzgruppen/index.php?projekt_id=<?= $pid ?>" class="la-btn" style="background:#475569;color:#fff;">🗂️ Gruppen</a>
     </div>
   </header>
 
