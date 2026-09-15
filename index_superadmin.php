@@ -1130,6 +1130,8 @@ let voiceRecordingTimer = null;
 let voiceRecordSeconds = 0;
 let voiceMediaStream = null;
 let voiceIsListening = false;
+let voiceStopping = false;
+let voiceStarting = false;
 let lastParsedVoice = null;
 
 let voiceInputDebounceTimer = null;
@@ -1228,6 +1230,8 @@ async function promptMicrophonePermission() {
 }
 
 async function startVoiceRecording() {
+  if (voiceStarting || voiceStopping || voiceIsListening) return;
+
   const status = document.getElementById('voiceStatusText');
   const btn = document.getElementById('voiceMicBtn');
   const input = document.getElementById('voiceTranscriptInput');
@@ -1244,6 +1248,7 @@ async function startVoiceRecording() {
 
   try {
     // 1. Mikrofon-Stream abrufen (funktioniert auf Safari & Chrome einwandfrei)
+    voiceStarting = true;
     voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (permHelp) permHelp.style.display = 'none';
 
@@ -1324,10 +1329,15 @@ async function startVoiceRecording() {
       status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
     }
     stopVoiceRecording(false);
+  } finally {
+    voiceStarting = false;
   }
 }
 
 async function stopVoiceRecording(processAudio = true) {
+  if (voiceStopping) return;
+  voiceStopping = true;
+
   voiceIsListening = false;
   clearInterval(voiceRecordingTimer);
 
@@ -1341,8 +1351,13 @@ async function stopVoiceRecording(processAudio = true) {
     voiceRecognition = null;
   }
 
+  // stop() delivers its final dataavailable asynchronously, before the stop event.
+  const recordedMime = voiceMediaRecorder?.mimeType || voiceAudioChunks[0]?.type || 'audio/webm';
   if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
-    try { voiceMediaRecorder.stop(); } catch(e) {}
+    await new Promise(resolve => {
+      voiceMediaRecorder.addEventListener('stop', resolve, { once: true });
+      try { voiceMediaRecorder.stop(); } catch (error) { resolve(); }
+    });
   }
 
   if (voiceMediaStream) {
@@ -1350,6 +1365,7 @@ async function stopVoiceRecording(processAudio = true) {
     voiceMediaStream = null;
   }
 
+  voiceStopping = false;
   if (!processAudio) return;
 
   const currentText = input ? input.value.trim() : '';
@@ -1367,7 +1383,7 @@ async function stopVoiceRecording(processAudio = true) {
       status.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
     }
 
-    const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
+    const resolvedMime = recordedMime;
     const audioBlob = new Blob(voiceAudioChunks, { type: resolvedMime });
     const reader = new FileReader();
     reader.onloadend = async () => {
@@ -1383,6 +1399,12 @@ async function stopVoiceRecording(processAudio = true) {
             audio_mime: audioBlob.type || resolvedMime
           })
         });
+        if (res.redirected || res.status === 401) {
+          throw new Error('Sitzung abgelaufen. Bitte neu anmelden.');
+        }
+        if (!(res.headers.get('content-type') || '').includes('application/json')) {
+          throw new Error('Ungültige Serverantwort (HTTP ' + res.status + '). Bitte später erneut versuchen.');
+        }
         const data = await res.json();
         if (data.ok && data.parsed) {
           lastParsedVoice = data.parsed;
@@ -1391,14 +1413,14 @@ async function stopVoiceRecording(processAudio = true) {
         } else {
           if (status) {
             status.style.color = '#dc2626';
-            status.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Bitte erneut aufnehmen oder tippen.');
+            status.textContent = '⚠️ ' + (data.message || 'Kein Text erkannt. Bitte erneut aufnehmen oder tippen.');
           }
         }
       } catch(e) {
         console.error('Audio processing error:', e);
         if (status) {
           status.style.color = '#dc2626';
-          status.textContent = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
+          status.textContent = '⚠️ Audio konnte nicht verarbeitet werden: ' + (e.message || 'Server nicht erreichbar');
         }
       }
     };
