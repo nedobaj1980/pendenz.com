@@ -1,0 +1,37 @@
+name: PHP CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'chatgpt/**'
+  pull_request:
+
+jobs:
+  php-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mysqli, mbstring, curl
+          coverage: none
+
+      - name: PHP syntax check
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            php -l "$file" >/dev/null
+          done < <(find . -type f -name '*.php' \
+            -not -path './vendor/*' \
+            -not -path './Absicherung vor löschen/*' \
+            -print0)
+
+      - name: Static safety checks
+        run: php tests/static_safety_checks.php
