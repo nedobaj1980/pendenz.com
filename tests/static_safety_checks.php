@@ -33,6 +33,7 @@ function mustContain(string $file, string $needle, string $message): void
 $voiceApi = $root . '/api/voice_pendenz_impl.php';
 $bootstrap = $root . '/api/_bootstrap.php';
 $aiQuery = $root . '/api/ai_query.php';
+$aiService = $root . '/app/modules/ai/AiService.php';
 $folderTemplates = $root . '/pages/ordner_vorlagen.php';
 
 mustNotContain(
@@ -81,6 +82,24 @@ mustContain(
     $aiQuery,
     '$status = \'offen\';',
     'Gimi Chat muss den Status vor dem Pendenz-INSERT explizit setzen.'
+);
+
+mustNotContain(
+    $aiService,
+    'CURLOPT_SSL_VERIFYPEER, false',
+    'Gimi Chat darf die TLS-Zertifikatsprüfung nicht deaktivieren.'
+);
+
+mustNotContain(
+    $aiService,
+    '$activeProjectId > 0 ? $activeProjectId : 1',
+    'Gimi darf ohne Kontext nicht automatisch Projekt 1 auswählen.'
+);
+
+mustContain(
+    $aiService,
+    'accessibleProjectIds',
+    'Gimi-Systemkontext muss auf berechtigte Projekte begrenzt sein.'
 );
 
 mustContain(
