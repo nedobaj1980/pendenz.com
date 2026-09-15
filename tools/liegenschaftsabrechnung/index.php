@@ -83,7 +83,7 @@ if ($pid <= 0 && !empty($projekte)) {
 
 // 2. Verfügbare Buchungsjahre ermitteln
 $dbYears = [];
-$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum != '0000-00-00' ORDER BY yr DESC");
+$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY yr DESC");
 if ($yrRes) {
     while ($r = $yrRes->fetch_assoc()) {
         $y = (int)$r['yr'];
@@ -96,7 +96,7 @@ rsort($availableYears);
 $selYear = isset($_GET['jahr']) && (int)$_GET['jahr'] > 2000 ? (int)$_GET['jahr'] : 0;
 if ($selYear <= 0) {
     // Prüfe ob Buchungen für das Projekt existieren
-    $chkYr = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) as yr FROM liegenschafts_konto WHERE (projekt_id = $pid OR liegenschaft_id = $pid) ORDER BY buchungsdatum DESC LIMIT 1");
+    $chkYr = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) as yr FROM liegenschafts_konto WHERE (projekt_id = $pid OR liegenschaft_id = $pid) AND YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY buchungsdatum DESC LIMIT 1");
     if ($chkYr && ($cy = $chkYr->fetch_assoc())) {
         $selYear = (int)$cy['yr'];
     } else {
