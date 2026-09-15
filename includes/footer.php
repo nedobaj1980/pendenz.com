@@ -423,7 +423,7 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
 
         // Vorformatierte HTML-Blöcke schützen (z.B. Pendenz-Erfolgs-Boxen)
         const preserved = [];
-        str = str.replace(/<div class=['"]ai-action-success[\s\S]*?<\/div>/gi, (match) => {
+        str = str.replace(/<div class=['"](?:ai-action-success|gimi-action-preview)[\s\S]*?<\/div>/gi, (match) => {
             preserved.push(match);
             return `%%%GIMI_PRESERVED_${preserved.length - 1}%%%`;
         });
@@ -493,9 +493,17 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
     function renderMessage(role, text) {
         const log = document.getElementById('gimi-messages');
         if (!log) return;
+        const previewMatch = String(text || '').match(/<div class=['"]gimi-action-preview['"][^>]*data-gimi-token=['"]([^'"]+)['"][\s\S]*?<\/div>/i);
+        if (previewMatch) text = String(text).replace(previewMatch[0], '');
         const div = document.createElement('div');
         div.className = 'ai-msg ' + (role === 'user' ? 'user' : 'bot');
         div.innerHTML = formatGimiMarkdown(text || '');
+        if (previewMatch) {
+            const box = document.createElement('div'); box.className = 'gimi-action-preview';
+            box.innerHTML = '<strong>📝 Pendenz vorbereiten</strong><br><button type="button">✅ Jetzt speichern</button>';
+            box.querySelector('button').addEventListener('click', function(){ confirmGimiAction(previewMatch[1], this); });
+            div.appendChild(box);
+        }
         log.appendChild(div);
         log.scrollTop = log.scrollHeight;
     }

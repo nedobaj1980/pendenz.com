@@ -222,7 +222,7 @@ class AiService {
         $context .= "1. Bestätige dies kurz, positiv und prägnant.\n";
         $context .= "2. Hänge als allerletzte Zeile IMMER diesen Tag an:\n";
         $targetPid = $activeProjectId > 0 ? $activeProjectId : 1;
-        $context .= "[ACTION:CREATE_PENDENZ|title=Prägnanter Titel|project_id={$targetPid}|wohnung_id={$activeWohnungId}|due=YYYY-MM-DD|priority=5]\n";
+        $context .= "[ACTION:CREATE_PENDENZ|title=Prägnanter Titel|subject=Kurzer Betreff|long=Ausführliche Beschreibung|project_id={$targetPid}|wohnung_id={$activeWohnungId}|due=YYYY-MM-DD|priority=5]\n";
         $context .= "(priority: 5=dringend/hoch, 3=normal, 1=niedrig).\n\n";
 
         // Training-Daten aus der DB holen

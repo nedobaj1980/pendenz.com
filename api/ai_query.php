@@ -258,6 +258,8 @@ try {
         }
 
         if (!empty($params['title'])) {
+            if (empty($params['subject']) && preg_match('/Betreff\s*:\s*(.*?)(?:\.|\n|Langtext)/isu', $prompt, $m)) $params['subject'] = trim($m[1]);
+            if (empty($params['long']) && preg_match('/(?:Langtext|Beschreibung)\s*:\s*(.*?)(?:\.|\n|Frist|Priorität|Dringend|Vorschau)/isu', $prompt, $m)) $params['long'] = trim($m[1]);
             // Schreibaktionen werden zuerst als Vorschau zurückgegeben.
             if (empty($input['confirm_token'])) {
                 if (session_status() === PHP_SESSION_NONE) session_start();
