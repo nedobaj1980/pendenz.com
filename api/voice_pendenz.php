@@ -2,7 +2,6 @@
 // api/voice_pendenz.php
 // Intelligente Voice-Erfassung für Pendenzen (Gimi Voice Assistant)
 declare(strict_types=1);
-if (session_status() === PHP_SESSION_NONE) session_start();
 
 require_once __DIR__ . '/_bootstrap.php';
 

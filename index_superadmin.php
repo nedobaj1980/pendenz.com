@@ -1348,14 +1348,14 @@ async function stopVoiceRecording(processAudio = true) {
         } else {
           if (status) {
             status.style.color = '#dc2626';
-            status.innerHTML = data.message || 'Kein Text erkannt. Bitte tippe den Text manuell ein.';
+            status.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Bitte erneut aufnehmen oder tippen.');
           }
         }
       } catch(e) {
-        console.error(e);
+        console.error('Audio processing error:', e);
         if (status) {
           status.style.color = '#dc2626';
-          status.textContent = 'Verbindungsfehler beim Verarbeiten.';
+          status.textContent = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
         }
       }
     };

@@ -6269,13 +6269,13 @@ if ($res) {
                             }
                         } else {
                             if (voiceStatusText) {
-                                voiceStatusText.innerHTML = '⚠️ Kein Text erkannt. Sie können den Text manuell eingeben.';
+                                voiceStatusText.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Sie können den Text manuell eingeben.');
                             }
                         }
                     } catch(e) {
-                        console.error(e);
+                        console.error('Audio processing error:', e);
                         if (voiceStatusText) {
-                            voiceStatusText.innerHTML = 'Verbindungsfehler beim Verarbeiten.';
+                            voiceStatusText.innerHTML = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
                         }
                     }
                 };
