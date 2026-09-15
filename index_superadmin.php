@@ -1216,15 +1216,25 @@ async function startVoiceRecording() {
     voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (permHelp) permHelp.style.display = 'none';
 
-    // 2. Audio Chunks aufnehmen
+    // 2. Audio Chunks aufnehmen mit Safari-kompatiblem MIME-Type
     voiceAudioChunks = [];
     if (typeof MediaRecorder !== 'undefined') {
       try {
-        voiceMediaRecorder = new MediaRecorder(voiceMediaStream);
+        let mrOpts = {};
+        if (typeof MediaRecorder.isTypeSupported === 'function') {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mrOpts = { mimeType: 'audio/mp4' };
+          } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mrOpts = { mimeType: 'audio/webm;codecs=opus' };
+          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            mrOpts = { mimeType: 'audio/webm' };
+          }
+        }
+        voiceMediaRecorder = new MediaRecorder(voiceMediaStream, mrOpts);
         voiceMediaRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) voiceAudioChunks.push(e.data);
         };
-        voiceMediaRecorder.start(250);
+        voiceMediaRecorder.start(500);
       } catch(mrErr) {
         console.warn('MediaRecorder error:', mrErr);
         voiceMediaRecorder = null;
@@ -1326,18 +1336,20 @@ async function stopVoiceRecording(processAudio = true) {
       status.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
     }
 
-    const audioBlob = new Blob(voiceAudioChunks, { type: voiceAudioChunks[0]?.type || 'audio/webm' });
+    const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
+    const audioBlob = new Blob(voiceAudioChunks, { type: resolvedMime });
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64data = reader.result;
+      const apiUrl = (window.location.pathname.includes('/pages/') ? '../' : '') + 'api/voice_pendenz.php';
       try {
-        const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
+        const res = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'parse',
             audio_base64: base64data,
-            audio_mime: audioBlob.type
+            audio_mime: audioBlob.type || resolvedMime
           })
         });
         const data = await res.json();

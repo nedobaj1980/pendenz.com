@@ -6136,11 +6136,21 @@ if ($res) {
                 audioChunks = [];
                 if (typeof MediaRecorder !== 'undefined') {
                     try {
-                        mediaRecorder = new MediaRecorder(mediaStream);
+                        let mrOpts = {};
+                        if (typeof MediaRecorder.isTypeSupported === 'function') {
+                            if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                                mrOpts = { mimeType: 'audio/mp4' };
+                            } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                                mrOpts = { mimeType: 'audio/webm;codecs=opus' };
+                            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+                                mrOpts = { mimeType: 'audio/webm' };
+                            }
+                        }
+                        mediaRecorder = new MediaRecorder(mediaStream, mrOpts);
                         mediaRecorder.ondataavailable = (e) => {
                             if (e.data && e.data.size > 0) audioChunks.push(e.data);
                         };
-                        mediaRecorder.start(250);
+                        mediaRecorder.start(500);
                     } catch(mrErr) {
                         console.warn('MediaRecorder init error:', mrErr);
                         mediaRecorder = null;
@@ -6245,18 +6255,20 @@ if ($res) {
                     voiceStatusText.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
                 }
 
-                const audioBlob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+                const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
+                const audioBlob = new Blob(audioChunks, { type: resolvedMime });
                 const reader = new FileReader();
                 reader.onloadend = async () => {
                     const base64data = reader.result;
+                    const apiUrl = (window.location.pathname.includes('/pages/') ? '../' : '') + 'api/voice_pendenz.php';
                     try {
-                        const res = await fetch('../api/voice_pendenz.php', {
+                        const res = await fetch(apiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 action: 'parse',
                                 audio_base64: base64data,
-                                audio_mime: audioBlob.type
+                                audio_mime: audioBlob.type || resolvedMime
                             })
                         });
                         const data = await res.json();
