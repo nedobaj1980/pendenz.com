@@ -6084,6 +6084,11 @@ if ($res) {
 
         let isRecording = false;
         let recognition = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordTimer = null;
+        let recordSeconds = 0;
+        let mediaStream = null;
         let lastParsedData = null;
         let parseDebounceTimer = null;
 
@@ -6097,11 +6102,8 @@ if ($res) {
                     stream.getTracks().forEach(track => track.stop());
                     if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
                     if (voiceStatusText) {
-                        voiceStatusText.innerHTML = '✅ <span style="color:#10b981;">Mikrofon freigegeben!</span> Aufnahme startet...';
+                        voiceStatusText.innerHTML = '✅ <span style="color:#10b981;">Mikrofon freigegeben!</span> Tippen Sie auf das Mikrofon zum Sprechen.';
                     }
-                    setTimeout(() => {
-                        startVoiceRecording();
-                    }, 300);
                     return;
                 } catch (err) {
                     console.warn('getUserMedia error:', err);
@@ -6112,109 +6114,182 @@ if ($res) {
                     return;
                 }
             }
-            startVoiceRecording();
         };
 
         if (btnPromptVoicePerm) {
             btnPromptVoicePerm.addEventListener('click', promptVoicePermission);
         }
 
-        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRec) {
-            recognition = new SpeechRec();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            // de-DE ist universell auf iOS Safari, iPadOS, Android und PC lauffähig
-            recognition.lang = 'de-DE';
-
-            recognition.onstart = () => {
-                isRecording = true;
-                if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
-                if (voiceMicCircle) {
-                    voiceMicCircle.style.background = '#ef4444';
-                    voiceMicCircle.style.color = '#fff';
-                    voiceMicCircle.style.boxShadow = '0 0 0 14px rgba(239, 68, 68, 0.25)';
-                }
+        const startVoiceRecording = async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 if (voiceStatusText) {
-                    voiceStatusText.innerHTML = '🎙️ <span style="color:#ef4444;">Ich höre zu...</span> Sprechen Sie jetzt.';
-                }
-            };
-
-            recognition.onresult = (event) => {
-                let current = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    current += event.results[i][0].transcript;
-                }
-                if (current && voiceTranscriptInput) {
-                    voiceTranscriptInput.value = current;
-                    triggerVoiceParse(current);
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.warn('SpeechRecognition error:', event.error);
-                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                    if (voicePermissionHelp) voicePermissionHelp.style.display = 'block';
-                    if (voiceStatusText) {
-                        voiceStatusText.innerHTML = '⚠️ Mikrofon-Zugriff wurde blockiert. Bitte im Browser erlauben (siehe Anleitung unten) oder Smartphone-Tastatur nutzen.';
-                    }
-                } else if (event.error === 'no-speech') {
-                    if (voiceStatusText) {
-                        voiceStatusText.innerHTML = 'Keine Sprache erkannt. Bitte erneut auf das Mikrofon tippen.';
-                    }
-                } else {
-                    if (voiceStatusText) {
-                        voiceStatusText.innerHTML = '⚠️ Spracherkennung gestoppt. Sie können den Text direkt manuell eintippen.';
-                    }
-                }
-                stopVoiceRecording();
-            };
-
-            recognition.onend = () => {
-                if (isRecording) {
-                    try { recognition.start(); } catch(e) { stopVoiceRecording(); }
-                } else {
-                    stopVoiceRecording();
-                }
-            };
-        }
-
-        const startVoiceRecording = () => {
-            if (!recognition) {
-                if (voiceStatusText) {
-                    voiceStatusText.innerHTML = '⚠️ Spracherkennung im Browser nicht nativ aktiv. Bitte Text manuell eingeben.';
+                    voiceStatusText.innerHTML = '⚠️ Mikrofon im Browser nicht unterstützt. Bitte Smartphone-Tastatur nutzen.';
                 }
                 if (voicePermissionHelp) voicePermissionHelp.style.display = 'block';
                 return;
             }
 
             try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
+
+                audioChunks = [];
+                if (typeof MediaRecorder !== 'undefined') {
+                    try {
+                        mediaRecorder = new MediaRecorder(mediaStream);
+                        mediaRecorder.ondataavailable = (e) => {
+                            if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                        };
+                        mediaRecorder.start(250);
+                    } catch(mrErr) {
+                        console.warn('MediaRecorder init error:', mrErr);
+                        mediaRecorder = null;
+                    }
+                }
+
                 isRecording = true;
-                recognition.start();
-            } catch (e) {
-                console.log('Recognition start issue:', e);
+                if (voiceMicCircle) {
+                    voiceMicCircle.style.background = '#ef4444';
+                    voiceMicCircle.style.color = '#fff';
+                    voiceMicCircle.style.boxShadow = '0 0 0 14px rgba(239, 68, 68, 0.25)';
+                }
+
+                recordSeconds = 0;
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = '🔴 <strong>Ich höre zu (0:00)</strong><br><span style="font-size:12px; font-weight:normal;">Sprechen Sie jetzt... Tippen Sie zum Beenden auf das Mikrofon</span>';
+                }
+
+                clearInterval(recordTimer);
+                recordTimer = setInterval(() => {
+                    recordSeconds++;
+                    const mins = Math.floor(recordSeconds / 60);
+                    const secs = (recordSeconds % 60).toString().padStart(2, '0');
+                    if (voiceStatusText && isRecording) {
+                        voiceStatusText.innerHTML = `🔴 <strong>Ich höre zu (${mins}:${secs})</strong><br><span style="font-size:12px; font-weight:normal;">Sprechen Sie jetzt... Tippen Sie zum Beenden auf das Mikrofon</span>`;
+                    }
+                }, 1000);
+
+                // Parallele Live-Spracherkennung falls unterstützt
+                const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRec) {
+                    try {
+                        recognition = new SpeechRec();
+                        recognition.lang = 'de-DE';
+                        recognition.interimResults = true;
+                        recognition.continuous = false;
+                        recognition.onresult = (event) => {
+                            let current = '';
+                            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                                current += event.results[i][0].transcript;
+                            }
+                            if (current && voiceTranscriptInput) {
+                                voiceTranscriptInput.value = current;
+                                triggerVoiceParse(current);
+                            }
+                        };
+                        recognition.onerror = (e) => {
+                            console.warn('Live Speech note:', e.error);
+                        };
+                        recognition.start();
+                    } catch(e) {
+                        console.warn('SpeechRecognition fallback:', e);
+                    }
+                }
+
+            } catch (err) {
+                console.warn('Mic start error:', err);
                 if (voicePermissionHelp) voicePermissionHelp.style.display = 'block';
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
+                }
+                stopVoiceRecording(false);
             }
         };
 
-        const stopVoiceRecording = () => {
+        const stopVoiceRecording = (processAudio = true) => {
             isRecording = false;
+            clearInterval(recordTimer);
+
             if (recognition) {
                 try { recognition.stop(); } catch (e) {}
+                recognition = null;
             }
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                try { mediaRecorder.stop(); } catch(e) {}
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+
             if (voiceMicCircle) {
                 voiceMicCircle.style.background = '#e0e7ff';
                 voiceMicCircle.style.color = '#4f46e5';
                 voiceMicCircle.style.boxShadow = '0 0 0 0 rgba(79,70,229,0.4)';
             }
-            if (voiceStatusText && !voiceStatusText.textContent.includes('blockiert') && !voiceStatusText.textContent.includes('verweigert')) {
-                voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+
+            if (!processAudio) return;
+
+            const currentText = voiceTranscriptInput ? voiceTranscriptInput.value.trim() : '';
+
+            if (currentText.length > 2) {
+                triggerVoiceParse(currentText);
+                if (voiceStatusText) voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+                return;
+            }
+
+            if (audioChunks.length > 0) {
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
+                }
+
+                const audioBlob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64data = reader.result;
+                    try {
+                        const res = await fetch('../api/voice_pendenz.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'parse',
+                                audio_base64: base64data,
+                                audio_mime: audioBlob.type
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.ok && data.parsed) {
+                            lastParsedData = data.parsed;
+                            if (voiceTranscriptInput) voiceTranscriptInput.value = data.parsed.original_text || data.parsed.beschreibung || '';
+                            renderParsedBadges(data.parsed);
+                            if (voiceStatusText) {
+                                voiceStatusText.innerHTML = '✅ <span style="color:#10b981;">Analyse erfolgreich!</span> Bereit zum Übernehmen.';
+                            }
+                        } else {
+                            if (voiceStatusText) {
+                                voiceStatusText.innerHTML = '⚠️ Kein Text erkannt. Sie können den Text manuell eingeben.';
+                            }
+                        }
+                    } catch(e) {
+                        console.error(e);
+                        if (voiceStatusText) {
+                            voiceStatusText.innerHTML = 'Verbindungsfehler beim Verarbeiten.';
+                        }
+                    }
+                };
+                reader.readAsDataURL(audioBlob);
+            } else {
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+                }
             }
         };
 
         const toggleVoiceRecording = () => {
             if (isRecording) {
-                stopVoiceRecording();
+                stopVoiceRecording(true);
             } else {
                 startVoiceRecording();
             }

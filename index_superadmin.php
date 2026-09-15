@@ -1138,9 +1138,13 @@ include __DIR__ . "/includes/nav_superadmin.php";
 
 <script>
 let voiceRecognition = null;
+let voiceMediaRecorder = null;
+let voiceAudioChunks = [];
+let voiceRecordingTimer = null;
+let voiceRecordSeconds = 0;
+let voiceMediaStream = null;
 let voiceIsListening = false;
 let lastParsedVoice = null;
-let voiceDebounce = null;
 
 function openVoiceModal() {
   const modal = document.getElementById('gimiVoiceModal');
@@ -1155,7 +1159,7 @@ function openVoiceModal() {
 }
 
 function closeVoiceModal() {
-  stopVoiceRecording();
+  stopVoiceRecording(false);
   const modal = document.getElementById('gimiVoiceModal');
   if (modal) modal.style.display = 'none';
 }
@@ -1173,16 +1177,12 @@ async function promptMicrophonePermission() {
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Sobald erlaubt, Tracks stoppen & direkt Aufnahme starten
       stream.getTracks().forEach(track => track.stop());
       if (permHelp) permHelp.style.display = 'none';
       if (status) {
         status.style.color = '#10b981';
-        status.textContent = '✅ Mikrofon freigegeben! Starte Aufnahme...';
+        status.textContent = '✅ Mikrofon freigegeben! Tippe jetzt auf das Mikrofon zum Sprechen.';
       }
-      setTimeout(() => {
-        startVoiceRecording();
-      }, 300);
       return;
     } catch (err) {
       console.warn('getUserMedia error:', err);
@@ -1194,128 +1194,209 @@ async function promptMicrophonePermission() {
       return;
     }
   }
-
-  // Fallback wenn kein getUserMedia
-  startVoiceRecording();
 }
 
-function startVoiceRecording() {
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+async function startVoiceRecording() {
   const status = document.getElementById('voiceStatusText');
   const btn = document.getElementById('voiceMicBtn');
   const input = document.getElementById('voiceTranscriptInput');
   const permHelp = document.getElementById('voicePermissionHelp');
 
-  if (!SpeechRec) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     if (status) {
-      status.style.color = '#d97706';
-      status.textContent = 'ℹ️ Direkte Spracherkennung nicht im Browser verfügbar. Bitte Textfeld oder Handy-Tastatur-Mikrofon nutzen.';
+      status.style.color = '#dc2626';
+      status.innerHTML = '⚠️ Mikrofon im Browser nicht unterstützt. Bitte Smartphone-Tastatur nutzen.';
     }
     if (permHelp) permHelp.style.display = 'block';
     return;
   }
 
-  // Bereits laufende Erkennung stoppen
-  if (voiceRecognition) {
-    try { voiceRecognition.abort(); } catch(e) {}
-    voiceRecognition = null;
-  }
-
   try {
-    voiceRecognition = new SpeechRec();
-    voiceRecognition.lang = 'de-DE';
-    voiceRecognition.interimResults = true;
-    voiceRecognition.continuous = false; // Wichtig für iOS Safari
+    // 1. Mikrofon-Stream abrufen (funktioniert auf Safari & Chrome einwandfrei)
+    voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (permHelp) permHelp.style.display = 'none';
 
-    voiceRecognition.onstart = () => {
-      voiceIsListening = true;
-      if (permHelp) permHelp.style.display = 'none';
-      if (btn) btn.classList.add('listening');
-      if (status) {
-        status.style.color = '#ef4444';
-        status.textContent = '🔴 Ich höre zu... sprich jetzt!';
+    // 2. Audio Chunks aufnehmen
+    voiceAudioChunks = [];
+    if (typeof MediaRecorder !== 'undefined') {
+      try {
+        voiceMediaRecorder = new MediaRecorder(voiceMediaStream);
+        voiceMediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) voiceAudioChunks.push(e.data);
+        };
+        voiceMediaRecorder.start(250);
+      } catch(mrErr) {
+        console.warn('MediaRecorder error:', mrErr);
+        voiceMediaRecorder = null;
       }
-    };
+    }
 
-    voiceRecognition.onresult = (e) => {
-      let text = '';
-      for (let i = 0; i < e.results.length; i++) {
-        text += e.results[i][0].transcript;
-      }
-      if (input) input.value = text;
-      const isFinal = e.results[e.results.length - 1].isFinal;
-      if (isFinal && text.trim().length > 0) {
-        parseVoiceInput(text.trim());
-      }
-    };
+    voiceIsListening = true;
+    if (btn) btn.classList.add('listening');
 
-    voiceRecognition.onerror = (err) => {
-      console.warn('SpeechRecognition error:', err);
-      if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
-        if (permHelp) permHelp.style.display = 'block';
-        if (status) {
-          status.style.color = '#dc2626';
-          status.innerHTML = '⚠️ Mikrofon-Zugriff noch nicht aktiv. Tippe auf <strong>«Berechtigungsabfrage anfordern»</strong> oder nutze die Tastatur-Diktierfunktion.';
-        }
-      } else if (err.error === 'no-speech') {
-        if (status) {
-          status.style.color = '#64748b';
-          status.innerHTML = 'ℹ️ Keine Sprache gehört. Tippe erneut auf das Mikrofon und sprich laut.';
-        }
-      } else if (err.error === 'aborted') {
-        if (status && status.textContent.includes('höre zu')) {
-          status.style.color = '#64748b';
-          status.innerHTML = 'Aufnahme beendet.';
-        }
-      } else {
-        if (status) {
-          status.style.color = '#dc2626';
-          status.innerHTML = '⚠️ Spracherkennung gestoppt. Du kannst den Text auch manuell eintippen.';
-        }
-      }
-      stopVoiceRecording();
-    };
+    // 3. Timer & Live-Status
+    voiceRecordSeconds = 0;
+    if (status) {
+      status.style.color = '#ef4444';
+      status.innerHTML = '🔴 <strong>Ich höre zu (0:00)</strong><br><span style="font-size:0.8rem; font-weight:normal;">Sprich jetzt... Tippe auf das Mikrofon zum Beenden</span>';
+    }
 
-    voiceRecognition.onend = () => {
-      stopVoiceRecording();
-      if (input && input.value.trim().length > 0) {
-        parseVoiceInput(input.value.trim());
+    clearInterval(voiceRecordingTimer);
+    voiceRecordingTimer = setInterval(() => {
+      voiceRecordSeconds++;
+      const mins = Math.floor(voiceRecordSeconds / 60);
+      const secs = (voiceRecordSeconds % 60).toString().padStart(2, '0');
+      if (status && voiceIsListening) {
+        status.innerHTML = `🔴 <strong>Ich höre zu (${mins}:${secs})</strong><br><span style="font-size:0.8rem; font-weight:normal;">Sprich jetzt... Tippe auf das Mikrofon zum Beenden</span>`;
       }
-    };
+    }, 1000);
 
-    // SYNCHRONER START innerhalb des Klick-Events für iOS Safari / Chrome
-    voiceRecognition.start();
-  } catch(e) {
-    console.warn('Voice start exception:', e);
+    // 4. Parallele Live-Spracherkennung falls vom Browser unterstützt
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        voiceRecognition = new SpeechRec();
+        voiceRecognition.lang = 'de-DE';
+        voiceRecognition.interimResults = true;
+        voiceRecognition.continuous = false;
+        voiceRecognition.onresult = (e) => {
+          let text = '';
+          for (let i = 0; i < e.results.length; i++) {
+            text += e.results[i][0].transcript;
+          }
+          if (input && text.trim()) input.value = text;
+        };
+        voiceRecognition.onerror = (e) => {
+          console.warn('Live recognition note:', e.error);
+        };
+        voiceRecognition.start();
+      } catch(e) {
+        console.warn('SpeechRecognition fallback:', e);
+      }
+    }
+
+  } catch (err) {
+    console.warn('Mic start error:', err);
     if (permHelp) permHelp.style.display = 'block';
     if (status) {
       status.style.color = '#dc2626';
-      status.textContent = 'Mikrofonzugriff erforderlich oder nicht bereit.';
+      status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
     }
-    stopVoiceRecording();
+    stopVoiceRecording(false);
   }
 }
 
-function stopVoiceRecording() {
+async function stopVoiceRecording(processAudio = true) {
   voiceIsListening = false;
+  clearInterval(voiceRecordingTimer);
+
   const btn = document.getElementById('voiceMicBtn');
   if (btn) btn.classList.remove('listening');
   const status = document.getElementById('voiceStatusText');
-  if (status && status.textContent.includes('höre zu')) {
-    status.style.color = '#64748b';
-    status.textContent = 'Aufnahme beendet.';
-  }
+  const input = document.getElementById('voiceTranscriptInput');
+
   if (voiceRecognition) {
     try { voiceRecognition.stop(); } catch(e) {}
+    voiceRecognition = null;
+  }
+
+  if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+    try { voiceMediaRecorder.stop(); } catch(e) {}
+  }
+
+  if (voiceMediaStream) {
+    voiceMediaStream.getTracks().forEach(t => t.stop());
+    voiceMediaStream = null;
+  }
+
+  if (!processAudio) return;
+
+  const currentText = input ? input.value.trim() : '';
+
+  // Wenn wir bereits erkannten Live-Text haben, analysieren wir diesen direkt
+  if (currentText.length > 2) {
+    parseVoiceInput(currentText);
+    return;
+  }
+
+  // Falls kein Text vorhanden, transkribieren wir das aufgenommene Audio über Gemini
+  if (voiceAudioChunks.length > 0) {
+    if (status) {
+      status.style.color = '#3b82f6';
+      status.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
+    }
+
+    const audioBlob = new Blob(voiceAudioChunks, { type: voiceAudioChunks[0]?.type || 'audio/webm' });
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64data = reader.result;
+      try {
+        const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'parse',
+            audio_base64: base64data,
+            audio_mime: audioBlob.type
+          })
+        });
+        const data = await res.json();
+        if (data.ok && data.parsed) {
+          lastParsedVoice = data.parsed;
+          if (input) input.value = data.parsed.original_text || data.parsed.beschreibung || '';
+          renderParsedVoiceBadges(data.parsed);
+        } else {
+          if (status) {
+            status.style.color = '#dc2626';
+            status.innerHTML = data.message || 'Kein Text erkannt. Bitte tippe den Text manuell ein.';
+          }
+        }
+      } catch(e) {
+        console.error(e);
+        if (status) {
+          status.style.color = '#dc2626';
+          status.textContent = 'Verbindungsfehler beim Verarbeiten.';
+        }
+      }
+    };
+    reader.readAsDataURL(audioBlob);
+  } else {
+    if (status) {
+      status.style.color = '#64748b';
+      status.textContent = 'Aufnahme beendet.';
+    }
   }
 }
 
 function toggleVoiceRecording() {
   if (voiceIsListening) {
-    stopVoiceRecording();
+    stopVoiceRecording(true);
   } else {
     startVoiceRecording();
   }
+}
+
+function renderParsedVoiceBadges(parsed) {
+  const preview = document.getElementById('voiceMatchPreview');
+  if (preview) preview.style.display = 'block';
+  
+  const vProj = document.getElementById('vBadgeProj');
+  const vUnit = document.getElementById('vBadgeUnit');
+  const vPrio = document.getElementById('vBadgePrio');
+  const vDue  = document.getElementById('vBadgeDue');
+  
+  if (vProj) vProj.textContent = 'Liegenschaft: ' + (parsed.projekt_name || 'Keine Angabe');
+  if (vUnit) vUnit.textContent = 'Wohnung: ' + (parsed.wohnung_name || 'Allgemein');
+  if (vPrio) vPrio.textContent = 'Priorität: ' + (parsed.wichtigkeit_label || 'Normal');
+  if (vDue)  vDue.textContent  = 'Frist: ' + (parsed.enddatum_label || parsed.enddatum || 'Keine Frist');
+
+  const status = document.getElementById('voiceStatusText');
+  if (status) {
+    status.style.color = '#10b981';
+    status.textContent = '✅ Analyse erfolgreich! Bereit zum Speichern.';
+  }
+  const saveBtn = document.getElementById('btnSaveVoicePendenz');
+  if (saveBtn) saveBtn.disabled = false;
 }
 
 async function parseVoiceInput(text) {
@@ -1335,29 +1416,11 @@ async function parseVoiceInput(text) {
     const data = await res.json();
     if (data.ok && data.parsed) {
       lastParsedVoice = data.parsed;
-      const preview = document.getElementById('voiceMatchPreview');
-      if (preview) preview.style.display = 'block';
-      
-      const vProj = document.getElementById('vBadgeProj');
-      const vUnit = document.getElementById('vBadgeUnit');
-      const vPrio = document.getElementById('vBadgePrio');
-      const vDue  = document.getElementById('vBadgeDue');
-      
-      if (vProj) vProj.textContent = 'Liegenschaft: ' + (lastParsedVoice.projekt_name || 'Keine Angabe');
-      if (vUnit) vUnit.textContent = 'Wohnung: ' + (lastParsedVoice.wohnung_name || 'Allgemein');
-      if (vPrio) vPrio.textContent = 'Priorität: ' + (lastParsedVoice.wichtigkeit_label || 'Normal');
-      if (vDue)  vDue.textContent  = 'Frist: ' + (lastParsedVoice.enddatum_label || lastParsedVoice.enddatum || 'Keine Frist');
-
-      if (status) {
-        status.style.color = '#10b981';
-        status.textContent = '✅ Analyse erfolgreich! Bereit zum Speichern.';
-      }
-      const saveBtn = document.getElementById('btnSaveVoicePendenz');
-      if (saveBtn) saveBtn.disabled = false;
+      renderParsedVoiceBadges(data.parsed);
     } else {
       if (status) {
         status.style.color = '#d97706';
-        status.textContent = '⚠️ Konnte Details nicht vollständig zuordnen. Text kann trotzdem gespeichert werden.';
+        status.textContent = '⚠️ Details unvollständig zugeordnet. Text kann trotzdem gespeichert werden.';
       }
       const saveBtn = document.getElementById('btnSaveVoicePendenz');
       if (saveBtn) saveBtn.disabled = false;

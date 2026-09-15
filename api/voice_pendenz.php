@@ -27,9 +27,78 @@ api_try(function() {
     
     $action = $data['action'] ?? $_GET['action'] ?? 'parse';
     $text   = trim((string)($data['text'] ?? ''));
+    $audioBase64 = (string)($data['audio_base64'] ?? '');
+    $audioMime   = (string)($data['audio_mime'] ?? 'audio/webm');
     
+    // Falls Audio übergeben wurde, aber kein Text vorhanden ist: Transkribiere per Gemini Flash
+    if ($text === '' && !empty($audioBase64)) {
+        $apiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : '';
+        if (!empty($apiKey)) {
+            // Bereinige MIME und Base64-Präfix falls vorhanden
+            if (preg_match('/^data:([^;]+);base64,(.*)$/', $audioBase64, $m)) {
+                $audioMime = $m[1];
+                $audioBase64 = $m[2];
+            }
+            // iOS Safari liefert oft audio/mp4 oder audio/wav oder audio/aac
+            if (str_contains($audioMime, 'mp4') || str_contains($audioMime, 'm4a') || str_contains($audioMime, 'aac')) {
+                $audioMime = 'audio/mp4';
+            } elseif (str_contains($audioMime, 'wav')) {
+                $audioMime = 'audio/wav';
+            } elseif (str_contains($audioMime, 'ogg')) {
+                $audioMime = 'audio/ogg';
+            } else {
+                $audioMime = 'audio/webm';
+            }
+
+            $models = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+            foreach ($models as $mName) {
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$mName}:generateContent?key=" . $apiKey;
+                $payload = [
+                    "contents" => [[
+                        "parts" => [
+                            [
+                                "inlineData" => [
+                                    "mimeType" => $audioMime,
+                                    "data" => $audioBase64
+                                ]
+                            ],
+                            [
+                                "text" => "Transkribiere diese Audionachricht für die Liegenschaftsverwaltung wortgetreu auf Deutsch. Gib NUR den transkribierten Text zurück, ohne Anführungszeichen oder Erklärungen."
+                            ]
+                        ]
+                    ]],
+                    "generationConfig" => [
+                        "temperature" => 0.1,
+                        "maxOutputTokens" => 1024
+                    ]
+                ];
+
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+                $res = curl_exec($ch);
+                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($code === 200 && $res) {
+                    $j = json_decode($res, true);
+                    $t = trim($j['candidates'][0]['content']['parts'][0]['text'] ?? '');
+                    if ($t !== '') {
+                        $text = $t;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if ($text === '' && $action !== 'save_direct') {
-        json_response(['ok' => false, 'error' => 'EMPTY_TEXT', 'message' => 'Kein gesprochener Text übergeben.'], 400);
+        json_response(['ok' => false, 'error' => 'EMPTY_TEXT', 'message' => 'Kein gesprochener Text erkannt. Bitte erneut aufnehmen oder manuell tippen.'], 400);
     }
     
     // 1. Stammdaten für KI/NLP Matcher abrufen
