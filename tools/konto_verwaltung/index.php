@@ -248,7 +248,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             $stUpd->close();
           } else {
             $stIns = $mysqli->prepare("INSERT INTO konto_rules (aktiv, priority, pattern, is_regex, liegenschaft_id, wohnung_id, mieter_id, wohnung_label, set_kategorie, note, created_at) VALUES (1, 10, ?, 0, ?, ?, ?, ?, ?, 'Gelernt aus Zuweisung', NOW())");
-            $stIns->bind_param("siiisss", $rulePat, $rPid, $wid, $mid, $wLbl, $kat);
+            $stIns->bind_param("siiiss", $rulePat, $rPid, $wid, $mid, $wLbl, $kat);
             $stIns->execute();
             $stIns->close();
           }

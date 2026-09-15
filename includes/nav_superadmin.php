@@ -368,9 +368,16 @@ if (isset($mysqli)) {
   }
 
   @media (max-width: 1024px) {
-    body.nav-side {
-      margin-left: 0;
+    body.nav-side,
+    body.nav-mode-side,
+    body.nav-mode-left,
+    body.nav-top,
+    body.nav-mode-top {
+      margin-left: 0 !important;
       padding-top: 56px !important;
+      width: 100% !important;
+      max-width: 100vw !important;
+      overflow-x: hidden !important;
     }
 
     /* is-side & override is-top: Left off-canvas */

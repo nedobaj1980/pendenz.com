@@ -493,6 +493,113 @@ include __DIR__ . "/includes/nav_superadmin.php";
     70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
   }
+
+  /* iPad & Tablet Optimierung (max-width: 1024px) */
+  @media (max-width: 1024px) {
+    .sdash-hero {
+      padding: 36px 20px !important;
+      margin-bottom: 24px !important;
+      border-radius: 0 0 16px 16px !important;
+    }
+    .sdash-hero__text h1 {
+      font-size: 2.1rem !important;
+    }
+    .sdash-kpi-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      padding: 0 16px !important;
+      gap: 14px !important;
+      margin-top: -24px !important;
+    }
+    .sdash-hub-section {
+      padding: 0 16px !important;
+      margin-bottom: 24px !important;
+    }
+    .sdash-hub-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 14px !important;
+    }
+    .sdash-portfolio-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 14px !important;
+    }
+  }
+
+  /* Mobile Smartphone Optimierung (max-width: 768px) */
+  @media (max-width: 768px) {
+    .sdash-wrap {
+      padding-bottom: 80px !important;
+    }
+    .sdash-hero {
+      padding: 24px 14px !important;
+      margin-bottom: 18px !important;
+    }
+    .sdash-hero__text h1 {
+      font-size: 1.65rem !important;
+      line-height: 1.2 !important;
+    }
+    .sdash-hero__text p {
+      font-size: 0.95rem !important;
+      margin-bottom: 16px !important;
+    }
+    .sdash-hero__badge {
+      font-size: 0.72rem !important;
+      padding: 4px 10px !important;
+    }
+    .sdash-hero__cta {
+      flex-direction: column !important;
+      width: 100% !important;
+      gap: 8px !important;
+    }
+    .sdash-hero__cta button,
+    .sdash-hero__cta a {
+      width: 100% !important;
+      text-align: center !important;
+      justify-content: center !important;
+      padding: 12px 16px !important;
+    }
+    .sdash-kpi-grid {
+      grid-template-columns: 1fr !important;
+      padding: 0 12px !important;
+      gap: 10px !important;
+      margin-top: -12px !important;
+    }
+    .sdash-hub-section {
+      padding: 0 12px !important;
+      margin-bottom: 20px !important;
+    }
+    .sdash-hub-grid {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+    .sdash-hub-card {
+      padding: 16px !important;
+    }
+    .sdash-portfolio-grid {
+      grid-template-columns: 1fr !important;
+      gap: 12px !important;
+    }
+    .sdash-port-card {
+      padding: 14px !important;
+    }
+    .sdash-port-stats {
+      flex-wrap: wrap !important;
+      gap: 10px !important;
+      padding: 8px 10px !important;
+    }
+    .voice-modal {
+      padding: 20px 16px !important;
+      border-radius: 16px !important;
+      margin: 10px !important;
+      max-height: 92vh !important;
+      overflow-y: auto !important;
+    }
+    .voice-pulse-btn {
+      width: 64px !important;
+      height: 64px !important;
+      font-size: 28px !important;
+      margin: 12px auto !important;
+    }
+  }
 </style>
 
 <div class="sdash-wrap" id="sdash-root" 
@@ -914,33 +1021,36 @@ include __DIR__ . "/includes/nav_superadmin.php";
 <!-- GIMI VOICE MODAL (SCHNELLE SPRACHERFASSUNG) -->
 <div id="gimiVoiceModal" class="voice-modal-overlay">
   <div class="voice-modal" onclick="event.stopPropagation()">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
       <h3 style="margin:0; font-size:1.25rem; font-weight:800; display:flex; align-items:center; gap:8px;">
         <span>🎙️</span> Gimi Voice Assistant
       </h3>
-      <button type="button" onclick="closeVoiceModal()" style="background:none; border:0; font-size:24px; cursor:pointer; color:#94a3b8;">✕</button>
+      <button type="button" onclick="closeVoiceModal()" style="background:none; border:0; font-size:24px; cursor:pointer; color:#94a3b8; line-height:1;">✕</button>
     </div>
 
-    <p style="font-size:0.9rem; color:#64748b; margin:0 0 16px;">
+    <p style="font-size:0.875rem; color:#64748b; margin:0 0 14px; line-height:1.45;">
       Sprich einfach frei: z.B. <em>"Romanshorn Arbonerstrasse Wohnung 3 Wasserhahn tropft dringend bis Freitag"</em>
     </p>
 
-    <div style="text-align:center;">
-      <button type="button" id="voiceMicBtn" class="voice-pulse-btn" onclick="toggleVoiceRecording()">
+    <div style="text-align:center; padding: 10px 0;">
+      <button type="button" id="voiceMicBtn" class="voice-pulse-btn" onclick="toggleVoiceRecording()" title="Tippe zum Sprechen">
         🎙️
       </button>
-      <div id="voiceStatusText" style="font-size:0.85rem; font-weight:700; color:#ef4444; min-height:20px;">
-        Klicke auf das Mikrofon um die Aufnahme zu starten
+      <div id="voiceStatusText" style="font-size:0.85rem; font-weight:700; color:#3b82f6; min-height:22px; margin-top:8px;">
+        👆 Tippe auf das Mikrofon, um die Aufnahme zu starten
       </div>
     </div>
 
-    <div style="margin-top:20px;">
-      <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:6px;">Erkannter Text:</label>
-      <textarea id="voiceTranscriptInput" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;" placeholder="Hier erscheint der gesprochene Text..."></textarea>
+    <div style="margin-top:14px;">
+      <label for="voiceTranscriptInput" style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:6px;">Erkannter Text oder manuelle Eingabe:</label>
+      <textarea id="voiceTranscriptInput" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;" placeholder="Hier sprechen oder Text eintippen..."></textarea>
+      <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">
+        💡 <strong>Tipp für Smartphone:</strong> Du kannst auch ins Textfeld tippen und die <strong>Mikrofon-Taste der Tastatur</strong> nutzen.
+      </div>
     </div>
 
     <!-- Live Preview Badges -->
-    <div id="voiceMatchPreview" style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:none;">
+    <div id="voiceMatchPreview" style="margin-top:14px; padding:12px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:none;">
       <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">Automatische Zuweisung:</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:0.8rem;">
         <span id="vBadgeProj" class="sdash-port-chip sdash-port-chip--primary">Liegenschaft: —</span>
@@ -950,7 +1060,7 @@ include __DIR__ . "/includes/nav_superadmin.php";
       </div>
     </div>
 
-    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
       <button type="button" class="sdash-btn sdash-btn--ghost" onclick="closeVoiceModal()">Abbrechen</button>
       <button type="button" id="btnSaveVoicePendenz" class="sdash-btn" style="background:#10b981; border:0;" onclick="saveVoicePendenz()" disabled>
         💾 Als Pendenz speichern
@@ -966,66 +1076,101 @@ include __DIR__ . "/includes/nav_superadmin.php";
 let voiceRecognition = null;
 let voiceIsListening = false;
 let lastParsedVoice = null;
+let voiceDebounce = null;
 
 function openVoiceModal() {
-  document.getElementById('gimiVoiceModal').style.display = 'flex';
-  startVoiceRecording();
+  const modal = document.getElementById('gimiVoiceModal');
+  if (modal) modal.style.display = 'flex';
+  const status = document.getElementById('voiceStatusText');
+  if (status) {
+    status.style.color = '#3b82f6';
+    status.textContent = '👆 Tippe auf das Mikrofon, um die Aufnahme zu starten';
+  }
 }
 
 function closeVoiceModal() {
   stopVoiceRecording();
-  document.getElementById('gimiVoiceModal').style.display = 'none';
+  const modal = document.getElementById('gimiVoiceModal');
+  if (modal) modal.style.display = 'none';
 }
 
 function startVoiceRecording() {
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    alert("Spracherkennung wird in diesem Browser nicht unterstützt. Bitte nutze Google Chrome oder Edge.");
-    return;
-  }
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  voiceRecognition = new SpeechRec();
-  voiceRecognition.lang = 'de-CH';
-  voiceRecognition.interimResults = true;
-  voiceRecognition.continuous = false;
-
-  const btn = document.getElementById('voiceMicBtn');
   const status = document.getElementById('voiceStatusText');
+  const btn = document.getElementById('voiceMicBtn');
   const input = document.getElementById('voiceTranscriptInput');
 
-  voiceRecognition.onstart = () => {
-    voiceIsListening = true;
-    btn.classList.add('listening');
-    status.textContent = '🔴 Ich höre zu... sprich jetzt!';
-  };
-
-  voiceRecognition.onresult = (e) => {
-    let text = '';
-    for (let i = 0; i < e.results.length; i++) {
-      text += e.results[i][0].transcript;
+  if (!SpeechRec) {
+    if (status) {
+      status.style.color = '#d97706';
+      status.textContent = 'ℹ️ Direkte Spracherkennung nicht im Browser verfügbar. Bitte Textfeld oder Handy-Tastatur-Mikrofon nutzen.';
     }
-    input.value = text;
-    if (e.results[0].isFinal) {
-      parseVoiceInput(text);
-    }
-  };
-
-  voiceRecognition.onerror = (err) => {
-    console.error(err);
-    status.textContent = '⚠️ Spracherkennung unterbrochen oder keine Eingabe.';
-    stopVoiceRecording();
-  };
-
-  voiceRecognition.onend = () => {
-    stopVoiceRecording();
-    if (input.value.trim().length > 0) {
-      parseVoiceInput(input.value.trim());
-    }
-  };
+    return;
+  }
 
   try {
+    voiceRecognition = new SpeechRec();
+    // de-DE ist universell auf allen mobilen iOS/Android und Desktop Browsern verfügbar
+    voiceRecognition.lang = 'de-DE';
+    voiceRecognition.interimResults = true;
+    voiceRecognition.continuous = false;
+
+    voiceRecognition.onstart = () => {
+      voiceIsListening = true;
+      if (btn) btn.classList.add('listening');
+      if (status) {
+        status.style.color = '#ef4444';
+        status.textContent = '🔴 Ich höre zu... sprich jetzt!';
+      }
+    };
+
+    voiceRecognition.onresult = (e) => {
+      let text = '';
+      for (let i = 0; i < e.results.length; i++) {
+        text += e.results[i][0].transcript;
+      }
+      if (input) input.value = text;
+      const isFinal = e.results[e.results.length - 1].isFinal;
+      if (isFinal && text.trim().length > 0) {
+        parseVoiceInput(text.trim());
+      }
+    };
+
+    voiceRecognition.onerror = (err) => {
+      console.warn('SpeechRecognition error:', err);
+      if (status) {
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          status.style.color = '#dc2626';
+          status.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
+        } else if (err.error === 'no-speech') {
+          status.style.color = '#64748b';
+          status.innerHTML = 'ℹ️ Keine Sprache gehört. Tippe erneut auf das Mikrofon und sprich laut.';
+        } else if (err.error === 'aborted') {
+          status.style.color = '#64748b';
+          status.innerHTML = 'Aufnahme beendet.';
+        } else {
+          status.style.color = '#dc2626';
+          status.innerHTML = '⚠️ Spracherkennung gestoppt. Du kannst den Text auch manuell eintippen.';
+        }
+      }
+      stopVoiceRecording();
+    };
+
+    voiceRecognition.onend = () => {
+      stopVoiceRecording();
+      if (input && input.value.trim().length > 0) {
+        parseVoiceInput(input.value.trim());
+      }
+    };
+
     voiceRecognition.start();
   } catch(e) {
-    console.warn(e);
+    console.warn('Voice start exception:', e);
+    if (status) {
+      status.style.color = '#64748b';
+      status.textContent = 'Tippe auf das Mikrofon, um erneut zu starten.';
+    }
+    stopVoiceRecording();
   }
 }
 
@@ -1035,6 +1180,7 @@ function stopVoiceRecording() {
   if (btn) btn.classList.remove('listening');
   const status = document.getElementById('voiceStatusText');
   if (status && status.textContent.includes('höre zu')) {
+    status.style.color = '#64748b';
     status.textContent = 'Aufnahme beendet.';
   }
   if (voiceRecognition) {
@@ -1053,7 +1199,10 @@ function toggleVoiceRecording() {
 async function parseVoiceInput(text) {
   if (!text) return;
   const status = document.getElementById('voiceStatusText');
-  status.textContent = '🧠 Gimi analysiert Liegenschaft, Wohnung und Frist...';
+  if (status) {
+    status.style.color = '#3b82f6';
+    status.textContent = '🧠 Gimi analysiert Liegenschaft, Wohnung und Frist...';
+  }
 
   try {
     const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
@@ -1064,31 +1213,52 @@ async function parseVoiceInput(text) {
     const data = await res.json();
     if (data.ok && data.parsed) {
       lastParsedVoice = data.parsed;
-      document.getElementById('voiceMatchPreview').style.display = 'block';
-      document.getElementById('vBadgeProj').textContent = 'Liegenschaft: ' + (lastParsedVoice.projekt_name || 'Keine Angabe');
-      document.getElementById('vBadgeUnit').textContent = 'Wohnung: ' + (lastParsedVoice.wohnung_name || 'Allgemein');
-      document.getElementById('vBadgePrio').textContent = 'Priorität: ' + (lastParsedVoice.wichtigkeit_label || 'Normal');
-      document.getElementById('vBadgeDue').textContent  = 'Frist: ' + (lastParsedVoice.enddatum_label || lastParsedVoice.enddatum || 'Keine Frist');
+      const preview = document.getElementById('voiceMatchPreview');
+      if (preview) preview.style.display = 'block';
+      
+      const vProj = document.getElementById('vBadgeProj');
+      const vUnit = document.getElementById('vBadgeUnit');
+      const vPrio = document.getElementById('vBadgePrio');
+      const vDue  = document.getElementById('vBadgeDue');
+      
+      if (vProj) vProj.textContent = 'Liegenschaft: ' + (lastParsedVoice.projekt_name || 'Keine Angabe');
+      if (vUnit) vUnit.textContent = 'Wohnung: ' + (lastParsedVoice.wohnung_name || 'Allgemein');
+      if (vPrio) vPrio.textContent = 'Priorität: ' + (lastParsedVoice.wichtigkeit_label || 'Normal');
+      if (vDue)  vDue.textContent  = 'Frist: ' + (lastParsedVoice.enddatum_label || lastParsedVoice.enddatum || 'Keine Frist');
 
-      status.textContent = '✅ Analyse erfolgreich! Bereit zum Speichern.';
-      document.getElementById('btnSaveVoicePendenz').disabled = false;
+      if (status) {
+        status.style.color = '#10b981';
+        status.textContent = '✅ Analyse erfolgreich! Bereit zum Speichern.';
+      }
+      const saveBtn = document.getElementById('btnSaveVoicePendenz');
+      if (saveBtn) saveBtn.disabled = false;
     } else {
-      status.textContent = '⚠️ Konnte Details nicht eindeutig zuordnen. Bitte Text prüfen.';
-      document.getElementById('btnSaveVoicePendenz').disabled = false;
+      if (status) {
+        status.style.color = '#d97706';
+        status.textContent = '⚠️ Konnte Details nicht vollständig zuordnen. Text kann trotzdem gespeichert werden.';
+      }
+      const saveBtn = document.getElementById('btnSaveVoicePendenz');
+      if (saveBtn) saveBtn.disabled = false;
     }
   } catch(e) {
     console.error(e);
-    status.textContent = 'Verbindungsfehler beim Verarbeiten.';
+    if (status) {
+      status.style.color = '#dc2626';
+      status.textContent = 'Verbindungsfehler beim Verarbeiten.';
+    }
   }
 }
 
 async function saveVoicePendenz() {
-  const text = document.getElementById('voiceTranscriptInput').value.trim();
+  const input = document.getElementById('voiceTranscriptInput');
+  const text = input ? input.value.trim() : '';
   if (!text) return;
 
   const btn = document.getElementById('btnSaveVoicePendenz');
-  btn.disabled = true;
-  btn.textContent = 'Speichere...';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Speichere...';
+  }
 
   try {
     const payload = {
@@ -1108,21 +1278,37 @@ async function saveVoicePendenz() {
       window.location.reload();
     } else {
       alert("Fehler beim Speichern: " + (data.message || data.error || 'Unbekannt'));
-      btn.disabled = false;
-      btn.textContent = '💾 Als Pendenz speichern';
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '💾 Als Pendenz speichern';
+      }
     }
   } catch(e) {
     console.error(e);
     alert("Netzwerkfehler beim Speichern.");
-    btn.disabled = false;
-    btn.textContent = '💾 Als Pendenz speichern';
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '💾 Als Pendenz speichern';
+    }
   }
 }
 
-document.getElementById('voiceTranscriptInput')?.addEventListener('input', function() {
-  const val = this.value.trim();
-  document.getElementById('btnSaveVoicePendenz').disabled = val.length === 0;
-});
+// Live-Analyse bei manueller Tastatur-Eingabe oder Smartphone-Diktat
+const tInput = document.getElementById('voiceTranscriptInput');
+if (tInput) {
+  tInput.addEventListener('input', function() {
+    const val = this.value.trim();
+    const saveBtn = document.getElementById('btnSaveVoicePendenz');
+    if (saveBtn) saveBtn.disabled = val.length === 0;
+
+    clearTimeout(voiceDebounce);
+    if (val.length >= 6) {
+      voiceDebounce = setTimeout(() => {
+        parseVoiceInput(val);
+      }, 750);
+    }
+  });
+}
 </script>
 
 <?php include __DIR__ . "/includes/footer.php"; ?>

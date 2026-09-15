@@ -760,40 +760,49 @@ $__user_id = (int) ($_SESSION['user_id'] ?? 0);
         const mic = document.getElementById('gimi-mic');
         const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRec) {
-            alert("Spracherkennung wird von diesem Browser leider nicht unterstützt. Bitte nutze Google Chrome oder Microsoft Edge.");
+            alert("Spracherkennung wird von diesem Browser nicht unterstützt. Bitte nutze die Mikrofon-Taste der Smartphone-Tastatur oder Google Chrome.");
             return;
         }
 
-        const recognition = new SpeechRec();
-        recognition.lang = 'de-CH';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        recognition.onstart = () => {
-            if (mic) mic.classList.add('active');
-        };
-
-        recognition.onresult = (event) => {
-            if (event.results && event.results[0] && event.results[0][0]) {
-                const text = event.results[0][0].transcript;
-                if (text && text.trim() !== '') {
-                    handleGimiInput(text.trim());
-                }
-            }
-        };
-
-        recognition.onerror = (e) => {
-            console.warn('Speech recognition error:', e);
-            if (mic) mic.classList.remove('active');
-        };
-
-        recognition.onend = () => {
-            if (mic) mic.classList.remove('active');
-        };
-
         try {
+            const recognition = new SpeechRec();
+            // de-DE ist auf allen Mobilgeräten (iOS, iPadOS, Android) und PCs universell unterstützt
+            recognition.lang = 'de-DE';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                if (mic) mic.classList.add('active');
+            };
+
+            recognition.onresult = (event) => {
+                if (event.results && event.results[0] && event.results[0][0]) {
+                    const text = event.results[0][0].transcript;
+                    if (text && text.trim() !== '') {
+                        handleGimiInput(text.trim());
+                    }
+                }
+            };
+
+            recognition.onerror = (e) => {
+                console.warn('Speech recognition error:', e);
+                if (mic) mic.classList.remove('active');
+                if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+                    renderMessage('bot', '⚠️ Mikrofonzugriff nicht gestattet. Bitte Berechtigung im Browser prüfen oder Frage direkt eintippen (auch die Smartphone-Tastatur hat eine Diktierfunktion).');
+                } else if (e.error === 'no-speech') {
+                    // Stille/kein Ton gehört
+                } else {
+                    renderMessage('bot', '⚠️ Spracherkennung unterbrochen. Du kannst Deine Frage auch direkt eintippen.');
+                }
+            };
+
+            recognition.onend = () => {
+                if (mic) mic.classList.remove('active');
+            };
+
             recognition.start();
         } catch (e) {
+            console.warn('Gimi voice error:', e);
             if (mic) mic.classList.remove('active');
         }
     }

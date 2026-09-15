@@ -6059,7 +6059,8 @@ if ($res) {
             recognition = new SpeechRec();
             recognition.continuous = true;
             recognition.interimResults = true;
-            recognition.lang = 'de-CH';
+            // de-DE ist universell auf iOS Safari, iPadOS, Android und PC lauffähig
+            recognition.lang = 'de-DE';
 
             recognition.onstart = () => {
                 isRecording = true;
@@ -6087,10 +6088,12 @@ if ($res) {
             recognition.onerror = (event) => {
                 console.warn('SpeechRecognition error:', event.error);
                 if (voiceStatusText) {
-                    if (event.error === 'not-allowed') {
-                        voiceStatusText.innerHTML = '⚠️ Mikrofon-Zugriff wurde blockiert. Sie können den Text auch manuell eingeben.';
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        voiceStatusText.innerHTML = '⚠️ Mikrofon-Zugriff wurde blockiert. Sie können den Text auch manuell eingeben oder die Diktat-Taste der Handy-Tastatur nutzen.';
                     } else if (event.error === 'no-speech') {
-                        voiceStatusText.innerHTML = 'Keine Sprache erkannt. Bitte erneut versuchen.';
+                        voiceStatusText.innerHTML = 'Keine Sprache erkannt. Bitte erneut auf das Mikrofon tippen.';
+                    } else {
+                        voiceStatusText.innerHTML = '⚠️ Spracherkennung gestoppt. Sie können den Text direkt manuell eintippen.';
                     }
                 }
                 stopVoiceRecording();

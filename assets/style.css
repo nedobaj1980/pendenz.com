@@ -392,3 +392,119 @@ th[data-sort="desc"]::after{content:" ▼";font-size:.8em;color:#6b7280}
 .print-header {
   display: none;
 }
+
+/* =========================================================================
+   Mobile (<768px) & iPad (768px-1024px) Global Responsive Enhancements
+   ========================================================================= */
+
+@media (max-width: 1024px) {
+  .container {
+    padding: 16px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .card {
+    margin: 12px auto;
+    padding: 14px;
+    border-radius: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Form Grids auf Tablets & iPads */
+  .form-grid {
+    gap: 12px;
+  }
+
+  /* Chat & Floating Widgets */
+  #chat-widget {
+    bottom: 16px !important;
+    right: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  .container {
+    padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Formulare einspaltig auf Smartphone */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  .form-grid .col-2 {
+    grid-column: span 1 !important;
+  }
+
+  .form-grid input, 
+  .form-grid select, 
+  .form-grid textarea {
+    font-size: 16px !important; /* Verhindert unabsichtlichen iOS-Safari-Zoom */
+    padding: 10px 12px;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+
+  /* Touch-optimierte Buttons */
+  .btn, button, input[type="submit"] {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    font-size: 14px;
+    border-radius: 8px;
+    touch-action: manipulation;
+  }
+
+  /* Hero-Bereiche */
+  .hero {
+    padding: 20px 14px;
+    border-radius: 12px;
+    margin-bottom: 14px;
+  }
+
+  .hero h1 {
+    font-size: 1.5rem !important;
+  }
+
+  /* Tabellen horizontales Wischen */
+  .card {
+    padding: 12px 10px;
+    margin: 10px 0;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table th, .table td, 
+  .card th, .card td {
+    padding: 8px 10px;
+    font-size: 12.5px;
+  }
+
+  /* Chat-Widget auf Smartphone kompakt */
+  #chat-widget {
+    bottom: calc(env(safe-area-inset-bottom, 12px) + 12px) !important;
+    right: 12px !important;
+  }
+
+  #chat-window {
+    width: calc(100vw - 24px) !important;
+    max-width: 380px !important;
+    max-height: 80vh !important;
+    right: 0 !important;
+  }
+}
+
