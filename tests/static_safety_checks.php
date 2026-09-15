@@ -79,13 +79,13 @@ mustNotContain(
 
 mustContain(
     $aiQuery,
-    "$status = 'offen';",
+    '$status = \'offen\';',
     'Gimi Chat muss den Status vor dem Pendenz-INSERT explizit setzen.'
 );
 
 mustContain(
     $folderTemplates,
-    "includes/csrf.php",
+    'includes/csrf.php',
     'Ordner-Muster benötigen CSRF-Schutz.'
 );
 
