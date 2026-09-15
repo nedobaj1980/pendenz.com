@@ -6067,6 +6067,8 @@ if ($res) {
         const btnPromptVoicePerm = document.getElementById('btnPromptVoicePerm');
 
         let isRecording = false;
+        let voiceStopping = false;
+        let voiceStarting = false;
         let recognition = null;
         let mediaRecorder = null;
         let audioChunks = [];
@@ -6105,6 +6107,8 @@ if ($res) {
         }
 
         const startVoiceRecording = async () => {
+            if (voiceStarting || voiceStopping || isRecording) return;
+
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 if (voiceStatusText) {
                     voiceStatusText.innerHTML = '⚠️ Mikrofon im Browser nicht unterstützt. Bitte Smartphone-Tastatur nutzen.';
@@ -6114,6 +6118,7 @@ if ($res) {
             }
 
             try {
+                voiceStarting = true;
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
 
@@ -6197,10 +6202,15 @@ if ($res) {
                     voiceStatusText.innerHTML = '⚠️ Mikrofonzugriff nicht gestattet. Bitte im Browser erlauben oder Smartphone-Tastatur nutzen.';
                 }
                 stopVoiceRecording(false);
+            } finally {
+                voiceStarting = false;
             }
         };
 
-        const stopVoiceRecording = (processAudio = true) => {
+        const stopVoiceRecording = async (processAudio = true) => {
+            if (voiceStopping) return;
+            voiceStopping = true;
+
             isRecording = false;
             clearInterval(recordTimer);
 
@@ -6209,8 +6219,13 @@ if ($res) {
                 recognition = null;
             }
 
+            // stop() delivers its final dataavailable asynchronously, before the stop event.
+            const recordedMime = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                try { mediaRecorder.stop(); } catch(e) {}
+                await new Promise(resolve => {
+                    mediaRecorder.addEventListener('stop', resolve, { once: true });
+                    try { mediaRecorder.stop(); } catch (error) { resolve(); }
+                });
             }
 
             if (mediaStream) {
@@ -6224,6 +6239,7 @@ if ($res) {
                 voiceMicCircle.style.boxShadow = '0 0 0 0 rgba(79,70,229,0.4)';
             }
 
+            voiceStopping = false;
             if (!processAudio) return;
 
             const currentText = voiceTranscriptInput ? voiceTranscriptInput.value.trim() : '';
@@ -6239,7 +6255,7 @@ if ($res) {
                     voiceStatusText.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
                 }
 
-                const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
+                const resolvedMime = recordedMime;
                 const audioBlob = new Blob(audioChunks, { type: resolvedMime });
                 const reader = new FileReader();
                 reader.onloadend = async () => {
@@ -6255,6 +6271,12 @@ if ($res) {
                                 audio_mime: audioBlob.type || resolvedMime
                             })
                         });
+                        if (res.redirected || res.status === 401) {
+                            throw new Error('Sitzung abgelaufen. Bitte neu anmelden.');
+                        }
+                        if (!(res.headers.get('content-type') || '').includes('application/json')) {
+                            throw new Error('Ungültige Serverantwort (HTTP ' + res.status + '). Bitte später erneut versuchen.');
+                        }
                         const data = await res.json();
                         if (data.ok && data.parsed) {
                             lastParsedData = data.parsed;
@@ -6265,13 +6287,13 @@ if ($res) {
                             }
                         } else {
                             if (voiceStatusText) {
-                                voiceStatusText.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Sie können den Text manuell eingeben.');
+                                voiceStatusText.textContent = '⚠️ ' + (data.message || 'Kein Text erkannt. Sie können den Text manuell eingeben.');
                             }
                         }
                     } catch(e) {
                         console.error('Audio processing error:', e);
                         if (voiceStatusText) {
-                            voiceStatusText.innerHTML = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
+                            voiceStatusText.textContent = '⚠️ Audio konnte nicht verarbeitet werden: ' + (e.message || 'Server nicht erreichbar');
                         }
                     }
                 };
@@ -6348,7 +6370,7 @@ if ($res) {
         btnFloatingVoice?.addEventListener('click', (e) => { e.preventDefault(); openVoiceModal(); });
         
         btnCloseVoiceModal?.addEventListener('click', () => {
-            stopVoiceRecording();
+            stopVoiceRecording(false);
             if (gimiVoiceModal) gimiVoiceModal.style.display = 'none';
         });
 
