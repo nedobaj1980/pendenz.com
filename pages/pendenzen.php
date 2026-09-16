@@ -6282,6 +6282,7 @@ if ($res) {
                         const base64data = reader.result;
                         const apiUrl = getVoiceApiUrl();
                         try {
+                            const currentProjId = new URLSearchParams(window.location.search).get('projekt_id') || document.querySelector('[name="projekt_id"]')?.value || '';
                             const res = await fetch(apiUrl, {
                                 method: 'POST',
                                 credentials: 'same-origin',
@@ -6289,7 +6290,8 @@ if ($res) {
                                 body: JSON.stringify({
                                     action: 'parse',
                                     audio_base64: base64data,
-                                    audio_mime: audioBlob.type || resolvedMime
+                                    audio_mime: audioBlob.type || resolvedMime,
+                                    projekt_id: currentProjId
                                 })
                             });
                             const data = await res.json();
@@ -6350,10 +6352,11 @@ if ($res) {
                 return;
             }
             parseDebounceTimer = setTimeout(() => {
+                const currentProjId = new URLSearchParams(window.location.search).get('projekt_id') || document.querySelector('[name="projekt_id"]')?.value || '';
                 fetch(getVoiceApiUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'parse', text: txt })
+                    body: JSON.stringify({ action: 'parse', text: txt, projekt_id: currentProjId })
                 })
                 .then(r => r.json())
                 .then(res => {

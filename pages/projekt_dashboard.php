@@ -60,8 +60,16 @@ require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/nav_dispatch.php';
 
 /** ---------- Eingaben ---------- */
-$projekt_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($projekt_id <= 0) die("❌ Kein Projekt gewählt.");
+$projekt_id = (int)($_GET['id'] ?? $_GET['projekt_id'] ?? ($_SESSION['current_project_id'] ?? 0));
+if ($projekt_id <= 0) {
+    $firstP = $mysqli->query("SELECT id FROM projekte ORDER BY id ASC LIMIT 1")->fetch_assoc();
+    if ($firstP) {
+        $projekt_id = (int)$firstP['id'];
+    } else {
+        die("❌ Kein Projekt vorhanden.");
+    }
+}
+$_SESSION['current_project_id'] = $projekt_id;
 $ctxRel = isset($_GET['path']) ? ltrim(str_replace('\\','/', trim($_GET['path'])), '/') : '';
 
 /** Auswahlmodus-Parameter (Pfad/Ordner „zurückgeben“) */
@@ -451,6 +459,17 @@ $coverChoices = ($ctxRel!=='') ? image_candidates($mysqli,$projekt_id,$ctxRel) :
 .imgpick{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff}
 .imgpick img{width:100%;height:100px;object-fit:cover;display:block}
 .imgpick form{padding:6px}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; padding: 0 12px; margin: 12px auto; }
+  .aside { max-height: 280px; margin-bottom: 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .header-card .inner { flex-direction: column; gap: 12px; }
+}
+@media (max-width: 500px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: 1fr; }
+}
 </style>
 
 <main class="shell">

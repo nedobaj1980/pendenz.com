@@ -1187,12 +1187,12 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
                             </button>
                         </td>
                         <td style="cursor:pointer;" onclick="openUnitDashboard(<?= $u['w_id'] ?>)">
-                            <span class="badge-obj"><?= htmlspecialchars($u['obj_name']) ?></span>
-                            <span class="badge-unit" style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($u['w_name']) ?></span>
+                            <span class="badge-obj"><?= htmlspecialchars((string)($u['obj_name'] ?? '')) ?></span>
+                            <span class="badge-unit" style="font-weight:700; color:#1e293b;"><?= htmlspecialchars((string)($u['w_name'] ?? '')) ?></span>
                         </td>
-                        <td><input type="text" class="input-edit" name="u[<?= $u['w_id'] ?>][etage]" value="<?= htmlspecialchars($u['etage']) ?>" placeholder="-"></td>
-                        <td><input type="number" step="0.5" class="input-edit" name="u[<?= $u['w_id'] ?>][zimmer]" value="<?= $u['zimmer'] ?>" placeholder="0"></td>
-                        <td><input type="number" class="input-edit" name="u[<?= $u['w_id'] ?>][flaeche]" value="<?= $u['flaeche'] ?>" placeholder="0"></td>
+                        <td><input type="text" class="input-edit" name="u[<?= $u['w_id'] ?>][etage]" value="<?= htmlspecialchars((string)($u['etage'] ?? '')) ?>" placeholder="-"></td>
+                        <td><input type="number" step="0.5" class="input-edit" name="u[<?= $u['w_id'] ?>][zimmer]" value="<?= htmlspecialchars((string)($u['zimmer'] ?? '')) ?>" placeholder="0"></td>
+                        <td><input type="number" class="input-edit" name="u[<?= $u['w_id'] ?>][flaeche]" value="<?= htmlspecialchars((string)($u['flaeche'] ?? '')) ?>" placeholder="0"></td>
                         <td>
                             <div style="display:flex; gap:6px; font-size:18px;">
                                 <label title="Balkon" style="cursor:pointer; opacity: <?= $u['balkon'] ? '1':'0.2' ?>; filter: <?= $u['balkon'] ? 'none':'grayscale(1)' ?>;">
@@ -1211,7 +1211,7 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
                         </td>
                         <td>
                             <?php if($u['mieter']): ?>
-                                <strong><?= htmlspecialchars($u['mieter']['name']) ?></strong>
+                                <strong><?= htmlspecialchars((string)($u['mieter']['name'] ?? '')) ?></strong>
                             <?php else: ?>
                                 <span style="color:#94a3b8; font-style:italic;">Leerstehend</span>
                             <?php endif; ?>
@@ -1258,7 +1258,7 @@ require_once __DIR__ . '/../includes/nav_dispatch.php';
                              </label>
                         </td>
                         <td>
-                            <input type="date" class="input-edit" name="u[<?= $u['w_id'] ?>][available_from]" value="<?= $u['available_from'] ?>" style="font-size:11px;">
+                            <input type="date" class="input-edit" name="u[<?= $u['w_id'] ?>][available_from]" value="<?= htmlspecialchars((string)($u['available_from'] ?? '')) ?>" style="font-size:11px;">
                         </td>
                         <td>
                             <div style="display:flex; gap:5px;">
@@ -1729,8 +1729,8 @@ function openTenantModal(wid) {
     document.getElementById('modal_w_id').value = wid;
     const moveWid = document.getElementById('modal_w_id_move');
     if (moveWid) moveWid.value = wid;
-    document.getElementById('modalTitle').innerText = '👤 Mieter & Mietverhältnis: ' + unit.w_name;
-    document.getElementById('unitInfo').innerHTML = `<span class="badge-obj">${unit.obj_name}</span> <span class="badge-unit">${unit.etage} | ${unit.zimmer} Zi.</span>`;
+    document.getElementById('modalTitle').innerText = '👤 Mieter & Mietverhältnis: ' + (unit.w_name || 'Einheit');
+    document.getElementById('unitInfo').innerHTML = `<span class="badge-obj">${unit.obj_name || 'Objekt'}</span> <span class="badge-unit">${unit.etage || '—'} | ${unit.zimmer ? unit.zimmer + ' Zi.' : '—'}</span>`;
     
     const curTD = document.getElementById('currentTenantDiv');
     const btnV = document.getElementById('btnTenantVertrag');
@@ -1740,15 +1740,15 @@ function openTenantModal(wid) {
 
     if (unit.mieter) {
         curTD.style.display = 'block';
-        document.getElementById('currentTenantName').innerText = unit.mieter.name;
+        document.getElementById('currentTenantName').innerText = unit.mieter.name || 'Unbekannt';
         document.getElementById('currentTenantDates').innerText = "Einzug: " + (unit.mieter.einzug_datum || '-');
         const nettoVal = parseFloat(unit.mieter.mietzins_netto) || 0;
         const nkVal = parseFloat(unit.mieter.mietzins_nk) || 0;
         const bruttoVal = (nettoVal + nkVal).toFixed(2);
         document.getElementById('currentTenantRentVal').innerText = "CHF " + bruttoVal + " (Netto: " + nettoVal.toFixed(2) + " / NK: " + nkVal.toFixed(2) + ")";
         document.getElementById('modal_pv_id').value = unit.mieter.pv_id || ''; 
-        document.getElementById('modal_netto').value = unit.mieter.mietzins_netto;
-        document.getElementById('modal_nk').value = unit.mieter.mietzins_nk;
+        document.getElementById('modal_netto').value = unit.mieter.mietzins_netto || '';
+        document.getElementById('modal_nk').value = unit.mieter.mietzins_nk || '';
         document.getElementById('assignTitle').innerText = "🔄 Mieterwechsel (Nachmieter erfassen)";
         const archWrap = document.getElementById('archiveOldWrap');
         if (archWrap) archWrap.style.display = 'flex';
@@ -1773,7 +1773,7 @@ function openRentModal(wid) {
     const unit = unitsArr.find(u => u.w_id == wid);
     if (!unit) return;
     document.getElementById('rent_modal_w_id').value = wid;
-    document.getElementById('rentUnitInfo').innerHTML = `<strong>${unit.w_name}</strong> (${unit.obj_name} | ${unit.etage} | ${unit.zimmer} Zi.)`;
+    document.getElementById('rentUnitInfo').innerHTML = `<strong>${unit.w_name || 'Einheit'}</strong> (${unit.obj_name || 'Objekt'} | ${unit.etage || '—'} | ${unit.zimmer ? unit.zimmer + ' Zi.' : '—'})`;
     
     let curNetto = 0, curNk = 0;
     if (unit.mieter) {
@@ -1873,12 +1873,12 @@ function openUnitDashboard(wid) {
     currentDashWid = wid;
 
     // Fill Modal
-    document.getElementById('dash_title').innerText = unit.w_name;
-    document.getElementById('dash_subtitle').innerText = unit.obj_name + ' | ' + unit.etage;
+    document.getElementById('dash_title').innerText = unit.w_name || 'Einheit';
+    document.getElementById('dash_subtitle').innerText = (unit.obj_name || 'Objekt') + ' | ' + (unit.etage || '—');
     
-    document.getElementById('dash_rooms_val').value = unit.zimmer;
-    document.getElementById('dash_m2_val').value = unit.flaeche;
-    document.getElementById('dash_floor_val').value = unit.etage;
+    document.getElementById('dash_rooms_val').value = unit.zimmer || "";
+    document.getElementById('dash_m2_val').value = unit.flaeche || "";
+    document.getElementById('dash_floor_val').value = unit.etage || "";
     
     document.getElementById('dash_baujahr_val').value = unit.baujahr || "";
     document.getElementById('dash_heizung_val').value = unit.heizungsart || "";

@@ -133,42 +133,87 @@ api_try(function() {
     
     $lowerText = mb_strtolower($text, 'UTF-8');
     
-    // A) Projekt-Erkennung
+    $contextProjektId = (int)($data['projekt_id'] ?? $_GET['projekt_id'] ?? $_SESSION['current_project_id'] ?? 0);
+
+    // Map objekte to projekt_id
+    $projByObj = [];
+    foreach ($objekte as $o) {
+        $projByObj[(int)$o['id']] = (int)$o['projekt_id'];
+    }
+
+    // A) Intelligente Projekt-Erkennung mit Relevanz-Scoring & Kontext-Priorisierung
+    $bestProj = null;
+    $bestScore = 0;
+
     foreach ($projekte as $p) {
+        $pid = (int)$p['id'];
         $pNameLower = mb_strtolower($p['name'], 'UTF-8');
-        // Ganzen Namen oder wesentliche Wortbestandteile prüfen (z.B. "Romanshorn", "Arbonerstrasse")
+        $score = 0;
+
         $tokens = preg_split('/[\s,_\-]+/', $pNameLower);
-        $matched = false;
-        if (mb_strpos($lowerText, $pNameLower) !== false) {
-            $matched = true;
-        } else {
-            foreach ($tokens as $t) {
-                if (mb_strlen($t) >= 4 && mb_strpos($lowerText, $t) !== false) {
-                    $matched = true;
-                    break;
+        foreach ($tokens as $t) {
+            $t = trim($t);
+            if (mb_strlen($t) < 3 || is_numeric($t)) continue;
+            if (mb_strpos($lowerText, $t) !== false) {
+                // Generische Ortsnamen erhalten Basispunkte, spezifische Strassennamen hohe Priorität
+                if (in_array($t, ['romanshorn', 'schweiz', 'thurgau', 'st.gallen', 'appenzell', 'sg', 'tg'])) {
+                    $score += 2;
+                } else {
+                    $score += 10; // z.B. "arbonerstrasse", "kreuzlingerstrasse", "nesslau", "marbach"
                 }
             }
         }
-        if ($matched) {
-            $parsed['projekt_id'] = (int)$p['id'];
-            $parsed['projekt_name'] = $p['name'];
-            break;
+
+        // Exakter Volltext-Treffer im Projektnamen
+        if (mb_strpos($lowerText, $pNameLower) !== false) {
+            $score += 25;
+        }
+
+        // Falls aktives Projekt im Kontext und Treffer vorliegt, Kontext bevorzugen
+        if ($contextProjektId > 0 && $pid === $contextProjektId) {
+            $score += 5;
+        }
+
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestProj = $p;
         }
     }
+
+    // Fallback auf Kontext-Projekt, falls im Text kein anderes Projekt genannt wurde
+    if (!$bestProj && $contextProjektId > 0) {
+        foreach ($projekte as $p) {
+            if ((int)$p['id'] === $contextProjektId) {
+                $bestProj = $p;
+                break;
+            }
+        }
+    }
+
+    if ($bestProj) {
+        $parsed['projekt_id'] = (int)$bestProj['id'];
+        $parsed['projekt_name'] = $bestProj['name'];
+    }
     
-    // B) Wohnungs-Erkennung
-    // z.B. "Wohnung 3", "Whg 2", "Einheit 4", "Wohnung 1.1", "Top 5"
+    // B) Wohnungs-Erkennung (Priorisiert Einheiten des erkannten Projekts)
+    $detectedProjId = $parsed['projekt_id'];
+
     if (preg_match('/(?:wohnung|whg|einheit|top)\s*([0-9a-zA-Z\.\-_]+)/ui', $text, $matches)) {
         $foundNum = trim($matches[1]);
         $padNum = is_numeric($foundNum) ? sprintf('%02d', (int)$foundNum) : $foundNum;
-        // Priorisiere Namens-Match ("Wohnung 03", "Whg 3")
+        
+        // Durchlauf 1: Zuerst gezielt im erkannten Projekt suchen
         foreach ($wohnungen as $w) {
+            $wProjId = $projByObj[(int)$w['objekt_id']] ?? 0;
+            if ($detectedProjId && $wProjId !== $detectedProjId) continue;
+
             $wNameLower = mb_strtolower($w['name'], 'UTF-8');
             if (
                 mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
                 mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($padNum, 'UTF-8')) !== false ||
                 mb_strpos($wNameLower, 'whg ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
-                mb_strpos($wNameLower, 'whg ' . mb_strtolower($padNum, 'UTF-8')) !== false
+                mb_strpos($wNameLower, 'whg ' . mb_strtolower($padNum, 'UTF-8')) !== false ||
+                preg_match('/\b' . preg_quote($foundNum, '/') . '\b/i', $w['name'])
             ) {
                 $parsed['wohnung_id'] = (int)$w['id'];
                 $parsed['wohnung_name'] = $w['name'];
@@ -177,6 +222,34 @@ api_try(function() {
             }
         }
         
+        // Durchlauf 2: Falls nicht im Projekt gefunden, über alle Einheiten suchen
+        if (!$parsed['wohnung_id']) {
+            foreach ($wohnungen as $w) {
+                $wNameLower = mb_strtolower($w['name'], 'UTF-8');
+                if (
+                    mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
+                    mb_strpos($wNameLower, 'wohnung ' . mb_strtolower($padNum, 'UTF-8')) !== false ||
+                    mb_strpos($wNameLower, 'whg ' . mb_strtolower($foundNum, 'UTF-8')) !== false ||
+                    mb_strpos($wNameLower, 'whg ' . mb_strtolower($padNum, 'UTF-8')) !== false
+                ) {
+                    $parsed['wohnung_id'] = (int)$w['id'];
+                    $parsed['wohnung_name'] = $w['name'];
+                    $parsed['objekt_id'] = (int)$w['objekt_id'];
+                    // Wenn Projekt noch nicht gesetzt war, jetzt vom Objekt ableiten
+                    if (!$parsed['projekt_id'] && isset($projByObj[(int)$w['objekt_id']])) {
+                        $parsed['projekt_id'] = $projByObj[(int)$w['objekt_id']];
+                        foreach ($projekte as $p) {
+                            if ((int)$p['id'] === $parsed['projekt_id']) {
+                                $parsed['projekt_name'] = $p['name'];
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         // Fallback auf reine ID falls kein Namensmatch
         if (!$parsed['wohnung_id']) {
             foreach ($wohnungen as $w) {
@@ -193,6 +266,9 @@ api_try(function() {
     // Falls noch keine Wohnung, gegen alle Wohnungsnamen matchen
     if (!$parsed['wohnung_id']) {
         foreach ($wohnungen as $w) {
+            $wProjId = $projByObj[(int)$w['objekt_id']] ?? 0;
+            if ($detectedProjId && $wProjId !== $detectedProjId) continue;
+
             $wNameLower = mb_strtolower($w['name'], 'UTF-8');
             if (mb_strlen($wNameLower) >= 3 && mb_strpos($lowerText, $wNameLower) !== false) {
                 $parsed['wohnung_id'] = (int)$w['id'];

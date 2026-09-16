@@ -10,11 +10,57 @@ function nk_allocate(float $total, string $key, array $units): array {
     if($den<=0) return ['allocations'=>[], 'warning'=>"Kein gültiger Verteilerschlüssel '$key'."];
     $out=[]; foreach($units as $u){$share=max(0.0,(float)($u[$key]??0))/$den; $out[(int)$u['wohnung_id']]=round($total*$share,2);} return ['allocations'=>$out,'warning'=>null];
 }
-function nk_calculate_statement(array $bookings,array $units,int $daysInPeriod,float $flatRate=0.20): array {
+function nk_calculate_statement(array $bookings, array $units, int $daysInPeriod, float $flatRate=0.20): array {
     $tenantTotal=0.0; $owner=['unterhalt'=>0.0,'investition'=>0.0,'verwaltung'=>0.0,'finanzierung'=>0.0,'privat'=>0.0,'unbekannt'=>0.0]; $warnings=[]; $byUnit=[];
     foreach($bookings as $b){$amt=abs((float)$b['betrag']); $tax=$b['steuerklasse']??'unbekannt'; $owner[$tax]=($owner[$tax]??0)+$amt; if(!empty($b['tenant_allocable'])){$r=nk_allocate($amt,$b['verteilerschluessel']??'area',$units); if($r['warning'])$warnings[]=$r['warning']; foreach($r['allocations'] as $id=>$v){$byUnit[$id]=($byUnit[$id]??0)+$v;} $tenantTotal+=$amt;}}
     $ownerEffective=$owner['unterhalt']+$owner['verwaltung']; $ownerFlat=round($tenantTotal*$flatRate,2);
-    return ['tenant_total'=>round($tenantTotal,2),'by_unit'=>$byUnit,'owner'=>$owner,'owner_effective'=>round($ownerEffective,2),'owner_flat'=> $ownerFlat,'owner_recommended'=>min($ownerEffective,$ownerFlat),'warnings'=>array_values(array_unique($warnings))];
+    
+    $unitDetails = [];
+    $totalAkonto = 0.0;
+    foreach ($units as $u) {
+        $uid = (int)($u['wohnung_id'] ?? 0);
+        $cost = $byUnit[$uid] ?? 0.0;
+        $monthlyAkonto = (float)($u['nk_akonto'] ?? 0.0);
+        $start = !empty($u['startdatum']) ? $u['startdatum'] : '2000-01-01';
+        $end = !empty($u['enddatum']) ? $u['enddatum'] : '2099-12-31';
+        $pFrom = $u['period_from'] ?? date('Y') . '-01-01';
+        $pTo = $u['period_to'] ?? date('Y') . '-12-31';
+
+        $activeDays = !empty($u['mieter_name']) ? nk_overlap_days($start, $end, $pFrom, $pTo) : 0;
+        $fraction = ($daysInPeriod > 0 && $activeDays > 0) ? ($activeDays / $daysInPeriod) : 0;
+        $akontoPaid = round($monthlyAkonto * $fraction * 12, 2);
+        $saldo = round($akontoPaid - $cost, 2);
+        $totalAkonto += $akontoPaid;
+
+        $unitDetails[$uid] = [
+            'wohnung_id' => $uid,
+            'wohnung_name' => $u['wohnung_name'] ?? ('Einheit #' . $uid),
+            'mieter_name' => $u['mieter_name'] ?? null,
+            'area' => (float)($u['area'] ?? 0),
+            'active_days' => $activeDays,
+            'monthly_akonto' => $monthlyAkonto,
+            'cost' => $cost,
+            'akonto_paid' => $akontoPaid,
+            'saldo' => $saldo,
+            'saldo_type' => $saldo >= 0 ? 'guthaben' : 'nachzahlung',
+            'is_leerstand' => empty($u['mieter_name'])
+        ];
+    }
+
+    $totalSaldo = round($totalAkonto - $tenantTotal, 2);
+
+    return [
+        'tenant_total' => round($tenantTotal,2),
+        'tenant_akonto_total' => round($totalAkonto, 2),
+        'tenant_saldo_total' => $totalSaldo,
+        'by_unit' => $byUnit,
+        'unit_details' => $unitDetails,
+        'owner' => $owner,
+        'owner_effective' => round($ownerEffective,2),
+        'owner_flat' => $ownerFlat,
+        'owner_recommended' => min($ownerEffective,$ownerFlat),
+        'warnings' => array_values(array_unique($warnings))
+    ];
 }
 function nk_match_group(string $text, array $groups): ?array {
     foreach ($groups as $group) {

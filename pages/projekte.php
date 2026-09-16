@@ -657,5 +657,4 @@ $stmt->close();
   <?php endif; ?>
 </div>
 
-<script defer src="<?= h($PREFIX) ?>assets/js/projekte.js"></script>
 <?php include __DIR__ . '/../includes/footer.php'; ?>

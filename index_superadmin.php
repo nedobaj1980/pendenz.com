@@ -1474,10 +1474,11 @@ async function parseVoiceInput(text) {
   }
 
   try {
+    const currentProjId = document.getElementById('projectSelector')?.value || new URLSearchParams(window.location.search).get('projekt_id') || '';
     const res = await fetch('<?= safe(base_url('api/voice_pendenz.php')) ?>', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'parse', text: text })
+      body: JSON.stringify({ action: 'parse', text: text, projekt_id: currentProjId })
     });
     const data = await res.json();
     if (data.ok && data.parsed) {
