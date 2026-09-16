@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/_bootstrap.php';
+require_once __DIR__ . '/../includes/pendenz_domain.php';
 
 // Normal users should be able to edit their own tasks or tasks in their projects
 // The can_edit_pendenz check will be done inside
@@ -48,7 +49,7 @@ api_try(function () {
         'titel', 'kurzbeschreibung', 'langbeschreibung', 'notiz', 
         'startdatum', 'enddatum', 'uhrzeit', 'tageszeit', 
         'status', 'wichtigkeit', 'zustaendig_id', 'projekt_id',
-        'wohnung_id', 'ordner_id', 'fs_rel_path', 'vorgaenger_id', 'dauer',
+        'objekt_id', 'wohnung_id', 'ordner_id', 'fs_rel_path', 'vorgaenger_id', 'dauer',
         'is_protocol', 'protocol_type', 'vorgangsart_id', 'raum_id'
     ];
 
@@ -69,6 +70,22 @@ api_try(function () {
         } elseif (in_array($f, $extra_fields)) {
             $extra_updates[$f] = $v;
         }
+    }
+
+    if (isset($db_updates['status'])) $db_updates['status'] = pendenz_normalize_status((string)$db_updates['status']);
+
+    // Enforce the project → object → apartment → room hierarchy on every inline edit.
+    $candidateProject = array_key_exists('projekt_id', $db_updates) ? (int)$db_updates['projekt_id'] : (int)($pendenz['projekt_id'] ?? 0);
+    $candidateObject  = array_key_exists('objekt_id', $db_updates) ? (int)$db_updates['objekt_id'] : (int)($pendenz['objekt_id'] ?? 0);
+    $candidateUnit    = array_key_exists('wohnung_id', $db_updates) ? (int)$db_updates['wohnung_id'] : (int)($pendenz['wohnung_id'] ?? 0);
+    $candidateRoom    = array_key_exists('raum_id', $db_updates) ? (int)$db_updates['raum_id'] : (int)($pendenz['raum_id'] ?? 0);
+    if ($candidateObject || $candidateUnit || $candidateRoom) {
+        $loc = ['projekt_id'=>$candidateProject, 'objekt_id'=>$candidateObject, 'wohnung_id'=>$candidateUnit, 'raum_id'=>$candidateRoom,
+                'objekt_projekt_id'=>null, 'wohnung_objekt_id'=>null, 'raum_wohnung_id'=>null];
+        if ($candidateObject) { $r=$db->query('SELECT projekt_id FROM objekte WHERE id='.$candidateObject)->fetch_assoc(); $loc['objekt_projekt_id']=$r['projekt_id']??null; }
+        if ($candidateUnit) { $r=$db->query('SELECT objekt_id FROM wohnungen WHERE id='.$candidateUnit)->fetch_assoc(); $loc['wohnung_objekt_id']=$r['objekt_id']??null; }
+        if ($candidateRoom) { $r=$db->query('SELECT wohnung_id FROM raeume WHERE id='.$candidateRoom)->fetch_assoc(); $loc['raum_wohnung_id']=$r['wohnung_id']??null; }
+        if (!pendenz_location_is_consistent($loc)) json_response(['ok'=>false,'error'=>'INVALID_LOCATION','message'=>'Projekt, Objekt, Wohnung und Raum müssen zusammengehören'], 422);
     }
 
     // --- MS PROJECT AUTO-RECALCULATION ENGINE ---
