@@ -175,32 +175,59 @@ include __DIR__ . "/includes/nav_superadmin.php";
 <link rel="stylesheet" href="<?= safe(asset_url('dashboard.css')) ?>?v=<?= time() ?>">
 
 <style>
-  /* PropTech High-End Dashboard Styles */
+  /* PropTech High-End Dashboard Styles – Kompakter Hero-Bereich */
   .sdash-hero {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0b1329 100%);
     position: relative;
     border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 22px 32px 42px !important;
+    margin: 0 auto 16px !important;
+  }
+  .sdash-hero__text {
+    max-width: 1400px !important;
   }
   .sdash-hero__badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 14px;
+    padding: 3px 10px;
     background: rgba(59, 130, 246, 0.15);
     border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 999px;
-    font-size: 0.8rem;
+    font-size: 0.725rem;
     font-weight: 700;
     color: #60a5fa;
-    margin-bottom: 16px;
-    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
+  }
+  .sdash-hero__text h1 {
+    font-size: 1.65rem !important;
+    font-weight: 800 !important;
+    margin: 0 0 4px !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.02em !important;
+  }
+  .sdash-hero__text p {
+    font-size: 0.9rem !important;
+    margin: 0 0 12px !important;
+    color: #94a3b8 !important;
+    line-height: 1.4 !important;
+    max-width: 950px !important;
   }
   .sdash-hero__cta {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 24px;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .sdash-hero__cta .sdash-btn {
+    padding: 7px 14px !important;
+    font-size: 0.825rem !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    gap: 6px !important;
   }
   .sdash-hero__cta .sdash-icon {
     width: 16px;
