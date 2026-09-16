@@ -1249,23 +1249,28 @@ async function startVoiceRecording() {
 
     // 2. Audio Chunks aufnehmen mit Safari-kompatiblem MIME-Type
     voiceAudioChunks = [];
+    let voiceRecordingMime = '';
     if (typeof MediaRecorder !== 'undefined') {
       try {
         let mrOpts = {};
         if (typeof MediaRecorder.isTypeSupported === 'function') {
           if (MediaRecorder.isTypeSupported('audio/mp4')) {
             mrOpts = { mimeType: 'audio/mp4' };
+            voiceRecordingMime = 'audio/mp4';
           } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
             mrOpts = { mimeType: 'audio/webm;codecs=opus' };
+            voiceRecordingMime = 'audio/webm;codecs=opus';
           } else if (MediaRecorder.isTypeSupported('audio/webm')) {
             mrOpts = { mimeType: 'audio/webm' };
+            voiceRecordingMime = 'audio/webm';
           }
         }
         voiceMediaRecorder = new MediaRecorder(voiceMediaStream, mrOpts);
         voiceMediaRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) voiceAudioChunks.push(e.data);
         };
-        voiceMediaRecorder.start(500);
+        // Safari erfordert start() ohne timeslice Parameter, sonst wirft WebKit DOMException
+        voiceMediaRecorder.start();
       } catch(mrErr) {
         console.warn('MediaRecorder error:', mrErr);
         voiceMediaRecorder = null;
@@ -1292,8 +1297,9 @@ async function startVoiceRecording() {
       }
     }, 1000);
 
-    // 4. Parallele Live-Spracherkennung falls vom Browser unterstützt
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // 4. Parallele Live-Spracherkennung nur auf Nicht-iOS (iOS WebKit deaktiviert Mikrofon bei doppeltem Zugriff)
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const SpeechRec = (!isIOSDevice && (window.SpeechRecognition || window.webkitSpeechRecognition)) ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
     if (SpeechRec) {
       try {
         voiceRecognition = new SpeechRec();
@@ -1328,6 +1334,7 @@ async function startVoiceRecording() {
 }
 
 async function stopVoiceRecording(processAudio = true) {
+  if (!voiceIsListening) return;
   voiceIsListening = false;
   clearInterval(voiceRecordingTimer);
 
@@ -1341,73 +1348,89 @@ async function stopVoiceRecording(processAudio = true) {
     voiceRecognition = null;
   }
 
-  if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
-    try { voiceMediaRecorder.stop(); } catch(e) {}
-  }
-
-  if (voiceMediaStream) {
-    voiceMediaStream.getTracks().forEach(t => t.stop());
-    voiceMediaStream = null;
-  }
-
-  if (!processAudio) return;
-
-  const currentText = input ? input.value.trim() : '';
-
-  // Wenn wir bereits erkannten Live-Text haben, analysieren wir diesen direkt
-  if (currentText.length > 2) {
-    parseVoiceInput(currentText);
-    return;
-  }
-
-  // Falls kein Text vorhanden, transkribieren wir das aufgenommene Audio über Gemini
-  if (voiceAudioChunks.length > 0) {
-    if (status) {
-      status.style.color = '#3b82f6';
-      status.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
+  const finalize = () => {
+    if (voiceMediaStream) {
+      voiceMediaStream.getTracks().forEach(t => t.stop());
+      voiceMediaStream = null;
     }
 
-    const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
-    const audioBlob = new Blob(voiceAudioChunks, { type: resolvedMime });
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64data = reader.result;
-      const apiUrl = (window.location.pathname.includes('/pages/') ? '../' : '') + 'api/voice_pendenz.php';
-      try {
-        const res = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'parse',
-            audio_base64: base64data,
-            audio_mime: audioBlob.type || resolvedMime
-          })
-        });
-        const data = await res.json();
-        if (data.ok && data.parsed) {
-          lastParsedVoice = data.parsed;
-          if (input) input.value = data.parsed.original_text || data.parsed.beschreibung || '';
-          renderParsedVoiceBadges(data.parsed);
-        } else {
+    if (!processAudio) return;
+
+    const currentText = input ? input.value.trim() : '';
+
+    // Wenn wir bereits erkannten Live-Text haben, analysieren wir diesen direkt
+    if (currentText.length > 2) {
+      parseVoiceInput(currentText);
+      return;
+    }
+
+    // Falls kein Text vorhanden, transkribieren wir das aufgenommene Audio über Gemini
+    if (voiceAudioChunks.length > 0) {
+      if (status) {
+        status.style.color = '#3b82f6';
+        status.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
+      }
+
+      const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
+      const audioBlob = new Blob(voiceAudioChunks, { type: resolvedMime });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result;
+        const apiUrl = (window.location.pathname.includes('/pages/') ? '../' : '') + 'api/voice_pendenz.php';
+        try {
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'parse',
+              audio_base64: base64data,
+              audio_mime: audioBlob.type || resolvedMime
+            })
+          });
+          const data = await res.json();
+          if (data.ok && data.parsed) {
+            lastParsedVoice = data.parsed;
+            if (input) input.value = data.parsed.original_text || data.parsed.beschreibung || '';
+            renderParsedVoiceBadges(data.parsed);
+            if (status) {
+              status.style.color = '#10b981';
+              status.innerHTML = '✅ <strong>Analyse erfolgreich!</strong>';
+            }
+          } else {
+            if (status) {
+              status.style.color = '#dc2626';
+              status.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Bitte erneut aufnehmen oder tippen.');
+            }
+          }
+        } catch(e) {
+          console.error('Audio processing error:', e);
           if (status) {
             status.style.color = '#dc2626';
-            status.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Bitte erneut aufnehmen oder tippen.');
+            status.textContent = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
           }
         }
-      } catch(e) {
-        console.error('Audio processing error:', e);
-        if (status) {
-          status.style.color = '#dc2626';
-          status.textContent = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
-        }
+      };
+      reader.readAsDataURL(audioBlob);
+    } else {
+      if (status) {
+        status.style.color = '#64748b';
+        status.textContent = 'Aufnahme beendet. Tippe erneut auf das Mikrofon zum Sprechen.';
       }
-    };
-    reader.readAsDataURL(audioBlob);
-  } else {
-    if (status) {
-      status.style.color = '#64748b';
-      status.textContent = 'Aufnahme beendet.';
     }
+  };
+
+  if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+    voiceMediaRecorder.onstop = () => {
+      finalize();
+    };
+    try {
+      voiceMediaRecorder.stop();
+    } catch(e) {
+      finalize();
+    }
+  } else {
+    finalize();
   }
 }
 

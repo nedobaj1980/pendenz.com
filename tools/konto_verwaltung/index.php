@@ -365,7 +365,7 @@ foreach ($allKonten as $ak) {
 
 // Alle Buchungsjahre aus liegenschafts_konto ermitteln (projektbezogen wenn Projekt aktiv)
 $dbYears = [];
-$yrSql = "SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum != '0000-00-00'";
+$yrSql = "SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum > '1970-01-01'";
 if ($projektId) {
   $yrSql .= " AND (liegenschaft_id = $projektId OR projekt_id = $projektId)";
 }

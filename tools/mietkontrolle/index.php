@@ -12,6 +12,7 @@ require_once __DIR__ . '/../../config.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/authz.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/property_scope.php';
 require_login();
 
 $role = $_SESSION['rolle'] ?? '';
@@ -29,7 +30,7 @@ $viewMode = (isset($_GET['view']) && $_GET['view'] === 'year') ? 'year' : 'month
 
 // Alle Buchungsjahre aus liegenschafts_konto ermitteln
 $dbYears = [];
-$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum != '0000-00-00' ORDER BY yr DESC");
+$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND buchungsdatum > '1970-01-01' ORDER BY yr DESC");
 if ($yrRes) {
     while ($r = $yrRes->fetch_assoc()) {
         $y = (int)$r['yr'];
@@ -112,6 +113,7 @@ $whgSql .= " ORDER BY p.name, o.name, w.name";
 $resW = $mysqli->query($whgSql);
 $wohnungen = [];
 if ($resW) while ($w = $resW->fetch_assoc()) {
+    if (!property_scope_is_tenant_unit($w['wohnung_name'] ?? '')) continue;
     $wohnungen[$w['wohnung_id']] = $w;
 }
 

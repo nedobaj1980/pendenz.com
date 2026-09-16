@@ -3,10 +3,16 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/pendenz_domain.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 // Auth-Check SOFORT am Anfang (bevor irgendwelcher Output kommt!)
 require_login();
+
+// Voice- und Formularlogik müssen nach Updates sofort neu geladen werden.
+// Safari hält Inline-JavaScript besonders lange aus dem Cache.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 
 // --- Selbstheilung für neue Unternehmer-Spalten ---
 try {
@@ -1007,7 +1013,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && postStr('form_action') === 'set_cov
     $input['langbeschreibung'] = postStr('langbeschreibung');
     $input['beschreibung'] = postStr('beschreibung', $input['beschreibung_manuell']);
     $input['notiz'] = postStr('notiz');
-    $input['status'] = postStr('status', 'offen');
+    $input['status'] = pendenz_normalize_status(postStr('status', 'offen'));
     $input['wichtigkeit'] = postStr('wichtigkeit');
     $input['startdatum'] = postStr('startdatum');
     $input['enddatum'] = postStr('enddatum');
@@ -1032,7 +1038,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && postStr('form_action') === 'set_cov
 
     if ($input['titel'] === '') {
         $error = 'Bitte Titel eingeben.';
-    } elseif (!in_array($input['status'], ['offen', 'in Bearbeitung', 'Unt. Erledigt.', 'erledigt', 'archiviert'], true)) {
+    } elseif (!pendenz_status_is_valid($input['status'])) {
         $error = 'Ungültiger Status.';
     } else {
         $currentUserId = currentUserId();
@@ -1539,10 +1545,20 @@ if ($activeProfile && !empty($activeProfile['filters_json'])) {
 }
 
 $whereParts = ["p.deleted_at IS NULL"];
+$contextProjektId = $prefillProjektId;
+$contextWohnungId = $prefillWohnungId;
+// Explicit page context always wins over a saved list profile. This prevents
+// opening ?projekt_id=3 while silently rendering another project's tasks.
+if ($contextProjektId !== null) {
+    $whereParts[] = "p.projekt_id = " . (int) $contextProjektId;
+}
+if ($contextWohnungId !== null) {
+    $whereParts[] = "p.wohnung_id = " . (int) $contextWohnungId;
+}
 if (!empty($profileFilters['status'])) {
     $whereParts[] = "p.status = '" . $mysqli->real_escape_string($profileFilters['status']) . "'";
 }
-if (!empty($profileFilters['projekt_id'])) {
+if ($contextProjektId === null && !empty($profileFilters['projekt_id'])) {
     $whereParts[] = "p.projekt_id = " . (int) $profileFilters['projekt_id'];
 }
 if (!empty($profileFilters['kategorie_id'])) {
@@ -4311,21 +4327,6 @@ if ($res) {
         <!-- Modal Body -->
         <div style="padding:20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;">
             
-            <!-- 1-Klick Smartphone Tastatur-Diktat Banner -->
-            <div style="background:linear-gradient(135deg, #eff6ff, #dbeafe); border:1.5px solid #bfdbfe; border-radius:14px; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                <div>
-                    <div style="font-weight:800; font-size:14px; color:#1e40af; display:flex; align-items:center; gap:6px;">
-                        <span>📲</span> Tastatur-Diktat (Empfohlen)
-                    </div>
-                    <div style="font-size:12px; color:#3b82f6; margin-top:2px;">
-                        Tippen Sie ins Feld & drücken Sie die <strong>🎙️-Taste der Tastatur</strong>.
-                    </div>
-                </div>
-                <button type="button" onclick="document.getElementById('voiceTranscriptInput').focus()" style="background:#2563eb; color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
-                    ⌨️ Diktat starten
-                </button>
-            </div>
-
             <!-- Mic Pulsing Circle -->
             <div style="text-align:center; padding:4px 0;">
                 <div id="voiceMicCircle" style="width:70px; height:70px; border-radius:50%; background:#e0e7ff; color:#4f46e5; display:inline-flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; transition:all 0.3s ease; box-shadow:0 0 0 0 rgba(79,70,229,0.4);">
@@ -4645,6 +4646,13 @@ if ($res) {
             populateSelect(fP, 'projekt');
             populateSelect(fS, 'status');
             populateSelect(fZ, 'zustaendig');
+            // Keep the visible table filter aligned with the explicit page context.
+            // The row data stores the project name while the quick selector stores its ID.
+            const contextProjectSelect = document.getElementById('quick_projekt_id');
+            if (contextProjectSelect?.value && fP && fP.options.length === 2) {
+                const contextName = contextProjectSelect.options[contextProjectSelect.selectedIndex]?.textContent?.trim();
+                if (contextName && [...fP.options].some(o => o.value === contextName)) fP.value = contextName;
+            }
 
             const fDF = document.getElementById('filterDateFrom'), fDT = document.getElementById('filterDateTo'), fDTyp = document.getElementById('filterDateType');
 
@@ -6075,6 +6083,41 @@ if ($res) {
         let mediaStream = null;
         let lastParsedData = null;
         let parseDebounceTimer = null;
+        let recordingMime = '';
+
+        // Resolve the endpoint from the current page so this also works when the
+        // application is served from a subfolder, an alias, or HTTPS on mobile.
+        const getVoiceApiUrl = () => {
+            try {
+                return new URL('../api/voice_pendenz.php', window.location.href).href;
+            } catch (e) {
+                // Safari can expose a temporarily incomplete location during a
+                // standalone/PWA navigation. Keep the request same-origin.
+                const base = String(window.location.pathname || '').split('/pages/')[0] || '';
+                return `${window.location.origin}${base}/api/voice_pendenz.php`;
+            }
+        };
+        const getSupportedRecordingMime = () => {
+            if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+            const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/aac', 'audio/ogg;codecs=opus'];
+            return candidates.find((mime) => {
+                try { return MediaRecorder.isTypeSupported(mime); } catch (e) { return false; }
+            }) || '';
+        };
+
+        const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+                && /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS/.test(navigator.userAgent));
+        const isIOS = isIOSSafari || /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+        const focusKeyboardDictation = () => {
+            if (!voiceTranscriptInput) return;
+            voiceTranscriptInput.focus();
+            voiceTranscriptInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (voiceStatusText) {
+                voiceStatusText.innerHTML = 'Tippen Sie jetzt auf das Mikrofon der Smartphone-Tastatur oder tippen Sie Ihren Text.';
+            }
+        };
 
         const promptVoicePermission = async () => {
             if (voiceStatusText) {
@@ -6118,23 +6161,17 @@ if ($res) {
                 if (voicePermissionHelp) voicePermissionHelp.style.display = 'none';
 
                 audioChunks = [];
+                recordingMime = '';
                 if (typeof MediaRecorder !== 'undefined') {
                     try {
-                        let mrOpts = {};
-                        if (typeof MediaRecorder.isTypeSupported === 'function') {
-                            if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                                mrOpts = { mimeType: 'audio/mp4' };
-                            } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-                                mrOpts = { mimeType: 'audio/webm;codecs=opus' };
-                            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-                                mrOpts = { mimeType: 'audio/webm' };
-                            }
-                        }
-                        mediaRecorder = new MediaRecorder(mediaStream, mrOpts);
+                        const supportedMime = getSupportedRecordingMime();
+                        mediaRecorder = new MediaRecorder(mediaStream, supportedMime ? { mimeType: supportedMime } : undefined);
+                        recordingMime = mediaRecorder.mimeType || supportedMime;
                         mediaRecorder.ondataavailable = (e) => {
                             if (e.data && e.data.size > 0) audioChunks.push(e.data);
                         };
-                        mediaRecorder.start(500);
+                        // Safari wirft DOMException bei timeslice Parameter - immer parameterlos starten!
+                        mediaRecorder.start();
                     } catch(mrErr) {
                         console.warn('MediaRecorder init error:', mrErr);
                         mediaRecorder = null;
@@ -6163,8 +6200,9 @@ if ($res) {
                     }
                 }, 1000);
 
-                // Parallele Live-Spracherkennung falls unterstützt
-                const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                // Parallele Live-Spracherkennung nur auf Nicht-iOS
+                // (iOS Safari WebKit blockiert das Mikrofon, wenn SpeechRecognition und getUserMedia gleichzeitig laufen)
+                const SpeechRec = (!isIOS && (window.SpeechRecognition || window.webkitSpeechRecognition)) ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
                 if (SpeechRec) {
                     try {
                         recognition = new SpeechRec();
@@ -6201,6 +6239,7 @@ if ($res) {
         };
 
         const stopVoiceRecording = (processAudio = true) => {
+            if (!isRecording) return;
             isRecording = false;
             clearInterval(recordTimer);
 
@@ -6209,77 +6248,90 @@ if ($res) {
                 recognition = null;
             }
 
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                try { mediaRecorder.stop(); } catch(e) {}
-            }
-
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(t => t.stop());
-                mediaStream = null;
-            }
-
             if (voiceMicCircle) {
                 voiceMicCircle.style.background = '#e0e7ff';
                 voiceMicCircle.style.color = '#4f46e5';
                 voiceMicCircle.style.boxShadow = '0 0 0 0 rgba(79,70,229,0.4)';
             }
 
-            if (!processAudio) return;
-
-            const currentText = voiceTranscriptInput ? voiceTranscriptInput.value.trim() : '';
-
-            if (currentText.length > 2) {
-                triggerVoiceParse(currentText);
-                if (voiceStatusText) voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
-                return;
-            }
-
-            if (audioChunks.length > 0) {
-                if (voiceStatusText) {
-                    voiceStatusText.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
+            const finalize = () => {
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(t => t.stop());
+                    mediaStream = null;
                 }
 
-                const resolvedMime = (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4')) ? 'audio/mp4' : 'audio/webm';
-                const audioBlob = new Blob(audioChunks, { type: resolvedMime });
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const base64data = reader.result;
-                    const apiUrl = (window.location.pathname.includes('/pages/') ? '../' : '') + 'api/voice_pendenz.php';
-                    try {
-                        const res = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                action: 'parse',
-                                audio_base64: base64data,
-                                audio_mime: audioBlob.type || resolvedMime
-                            })
-                        });
-                        const data = await res.json();
-                        if (data.ok && data.parsed) {
-                            lastParsedData = data.parsed;
-                            if (voiceTranscriptInput) voiceTranscriptInput.value = data.parsed.original_text || data.parsed.beschreibung || '';
-                            renderParsedBadges(data.parsed);
-                            if (voiceStatusText) {
-                                voiceStatusText.innerHTML = '✅ <span style="color:#10b981;">Analyse erfolgreich!</span> Bereit zum Übernehmen.';
-                            }
-                        } else {
-                            if (voiceStatusText) {
-                                voiceStatusText.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Sie können den Text manuell eingeben.');
-                            }
-                        }
-                    } catch(e) {
-                        console.error('Audio processing error:', e);
-                        if (voiceStatusText) {
-                            voiceStatusText.innerHTML = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
-                        }
+                if (!processAudio) return;
+
+                const currentText = voiceTranscriptInput ? voiceTranscriptInput.value.trim() : '';
+
+                if (currentText.length > 2) {
+                    triggerVoiceParse(currentText);
+                    if (voiceStatusText) voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+                    return;
+                }
+
+                if (audioChunks.length > 0) {
+                    if (voiceStatusText) {
+                        voiceStatusText.innerHTML = '🧠 <strong>Gimi transkribiert & analysiert Audio...</strong>';
                     }
-                };
-                reader.readAsDataURL(audioBlob);
-            } else {
-                if (voiceStatusText) {
-                    voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+
+                    const resolvedMime = recordingMime || audioChunks[0]?.type || getSupportedRecordingMime() || (isIOS ? 'audio/mp4' : 'audio/webm');
+                    const audioBlob = new Blob(audioChunks, { type: resolvedMime });
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                        const base64data = reader.result;
+                        const apiUrl = getVoiceApiUrl();
+                        try {
+                            const res = await fetch(apiUrl, {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'parse',
+                                    audio_base64: base64data,
+                                    audio_mime: audioBlob.type || resolvedMime
+                                })
+                            });
+                            const data = await res.json();
+                            if (data.ok && data.parsed) {
+                                lastParsedData = data.parsed;
+                                if (voiceTranscriptInput) voiceTranscriptInput.value = data.parsed.original_text || data.parsed.beschreibung || '';
+                                renderParsedBadges(data.parsed);
+                                if (voiceStatusText) {
+                                    voiceStatusText.innerHTML = '✅ <span style="color:#10b981;">Analyse erfolgreich!</span> Bereit zum Übernehmen.';
+                                }
+                            } else {
+                                if (voiceStatusText) {
+                                    voiceStatusText.innerHTML = '⚠️ ' + (data.message || 'Kein Text erkannt. Sie können den Text manuell eingeben.');
+                                }
+                            }
+                        } catch(e) {
+                            console.error('Audio processing error:', e);
+                            if (voiceStatusText) {
+                                voiceStatusText.innerHTML = '⚠️ Verbindungsfehler: ' + (e.message || 'Server nicht erreichbar');
+                            }
+                        }
+                    };
+                    reader.readAsDataURL(audioBlob);
+                } else {
+                    if (voiceStatusText) {
+                        voiceStatusText.innerHTML = 'Klicken Sie auf das Mikrofon, um erneut zu sprechen.';
+                    }
                 }
+            };
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                const recorderToStop = mediaRecorder;
+                recorderToStop.onstop = () => {
+                    finalize();
+                };
+                try {
+                    recorderToStop.stop();
+                } catch(e) {
+                    finalize();
+                }
+            } else {
+                finalize();
             }
         };
 
@@ -6298,7 +6350,7 @@ if ($res) {
                 return;
             }
             parseDebounceTimer = setTimeout(() => {
-                fetch('../api/voice_pendenz.php', {
+                fetch(getVoiceApiUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'parse', text: txt })
@@ -6340,7 +6392,12 @@ if ($res) {
                 if (voiceEntityContainer) voiceEntityContainer.style.display = 'none';
                 if (voiceAlertBox) voiceAlertBox.style.display = 'none';
                 lastParsedData = null;
-                startVoiceRecording();
+                recordingMime = '';
+                if (voiceStatusText) {
+                    voiceStatusText.innerHTML = isIOSSafari
+                        ? 'Tippen Sie auf den roten Knopf und danach auf das Mikrofon der iPhone-Tastatur.'
+                        : 'Klicken Sie auf das Mikrofon, um direkt aufzunehmen.';
+                }
             }
         };
 
@@ -6429,7 +6486,7 @@ if ($res) {
             btnSaveVoiceDirect.disabled = true;
             btnSaveVoiceDirect.innerHTML = '⏳ Speichere...';
 
-            fetch('../api/voice_pendenz.php', {
+            fetch(getVoiceApiUrl(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

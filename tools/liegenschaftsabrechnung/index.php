@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/fs.php';
 require_once __DIR__ . '/../nebenkostenabrechnung/bootstrap.php';
 require_once __DIR__ . '/../nebenkostenabrechnung/lib.php';
+require_once __DIR__ . '/../../includes/property_scope.php';
 if (file_exists(__DIR__ . '/../../includes/csrf.php')) {
     require_once __DIR__ . '/../../includes/csrf.php';
 }
@@ -86,7 +87,7 @@ if ($pid <= 0 && !empty($projekte)) {
 
 // 2. Verfügbare Buchungsjahre ermitteln
 $dbYears = [];
-$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY yr DESC");
+$yrRes = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) AS yr FROM liegenschafts_konto WHERE buchungsdatum IS NOT NULL AND YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY yr DESC");
 if ($yrRes) {
     while ($r = $yrRes->fetch_assoc()) {
         $y = (int)$r['yr'];
@@ -99,7 +100,7 @@ rsort($availableYears);
 $selYear = isset($_GET['jahr']) && (int)$_GET['jahr'] > 2000 ? (int)$_GET['jahr'] : 0;
 if ($selYear <= 0) {
     // Prüfe ob Buchungen für das Projekt existieren
-    $chkYr = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) as yr FROM liegenschafts_konto WHERE (projekt_id = $pid OR liegenschaft_id = $pid) AND YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY buchungsdatum DESC LIMIT 1");
+    $chkYr = $mysqli->query("SELECT DISTINCT YEAR(buchungsdatum) as yr FROM liegenschafts_konto WHERE (projekt_id = $pid OR liegenschaft_id = $pid) AND buchungsdatum IS NOT NULL AND YEAR(buchungsdatum) BETWEEN 2000 AND 2099 ORDER BY buchungsdatum DESC LIMIT 1");
     if ($chkYr && ($cy = $chkYr->fetch_assoc())) {
         $selYear = (int)$cy['yr'];
     } else {
@@ -127,7 +128,7 @@ if ($pid > 0) {
 
 // Wohnungen der Liegenschaft zählen
 $wohnungCount = 0;
-$wRes = $mysqli->query("SELECT COUNT(*) as c FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id WHERE o.projekt_id = $pid");
+$wRes = $mysqli->query("SELECT COUNT(*) as c FROM wohnungen w JOIN objekte o ON w.objekt_id = o.id WHERE o.projekt_id = $pid AND LOWER(w.name) NOT REGEXP 'treppenhaus|tiefgarage|umgebung|spielplatz|fahrgasse|allgemein|parkpl|garage|stellplatz|hauswartung'");
 if ($wRes && ($wr = $wRes->fetch_assoc())) {
     $wohnungCount = (int)$wr['c'];
 }
